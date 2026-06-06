@@ -20,12 +20,14 @@ ARG PNPM_VERSION
 # We install these first because they almost never change.
 # If this layer is cached, it never rebuilds regardless of toolchain changes.
 #
-# curl         — downloading toolchain installers
-# git          — source control inside the container
+# curl            — downloading toolchain installers
+# git             — source control inside the container
 # ca-certificates — HTTPS certificate validation (needed for curl)
 # build-essential — C compiler + make (some Rust crates compile C dependencies)
-# pkg-config   — helps Rust find system libraries
-# libssl-dev   — SSL development headers (needed by some Rust/Go packages)
+# pkg-config      — helps Rust find system libraries
+# libssl-dev      — SSL development headers (needed by some Rust/Go packages)
+# sudo            — allows developer user to run privileged commands
+#                   needed to fix volume permissions on container start
 RUN apt-get update && apt-get install -y \
     curl \
     git \
@@ -33,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     libssl-dev \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Zone 1: Non-root user ─────────────────────────────────────────────────────
@@ -46,8 +49,12 @@ RUN apt-get update && apt-get install -y \
 # Why UID 1000?
 # - This matches the default UID of the first user in most Linux systems
 # - Including WSL2 — so file ownership between host and container aligns
+#
+# NOPASSWD:ALL allows the developer user to run sudo without a password.
+# This is acceptable in a development container — it is not a production image.
 RUN groupadd --gid 1000 developer \
-    && useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home developer
+    && useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home developer \
+    && echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # All subsequent steps run as the developer user
 USER developer
@@ -81,9 +88,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 #
 # Think of it as the "build pipeline" between your Rust engine and the browser.
 #
-# We install via the binary installer, NOT via "cargo install wasm-pack".
+# We install via direct binary download, NOT via "cargo install wasm-pack".
 # cargo install compiles from source — that takes 10+ minutes.
-# The binary installer downloads a pre-compiled executable — takes seconds.
+# The binary download grabs a pre-compiled executable — takes seconds.
 RUN . $HOME/.cargo/env \
     && curl -sSL https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz \
     | tar -xz --strip-components=1 -C $CARGO_HOME/bin/ \
@@ -93,9 +100,7 @@ RUN . $HOME/.cargo/env \
 # We install Go via the official tarball, not apt.
 # apt's Go package often lags by several minor versions.
 #
-# Go installs to /usr/local/go (system level) but we download as the developer
-# user and use sudo-equivalent via the tarball approach.
-# Instead, we install to the user's home directory to stay consistent
+# We install to the user's home directory to stay consistent
 # with our non-root approach.
 ENV GOROOT=/home/developer/.go
 ENV GOPATH=/home/developer/go
