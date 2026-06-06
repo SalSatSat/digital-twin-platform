@@ -1,0 +1,140 @@
+{
+    "name": "Digital Twin Platform",
+    // ── Build configuration ──────────────────────────────────────────────────
+    // Points VSCode at our Dockerfile and passes toolchain versions as build
+    // arguments. The versions come from .toolchain-versions — we read them
+    // here so there is still only one place to change a version.
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "..",
+        "args": {
+            "RUST_VERSION": "${localEnv:RUST_VERSION}",
+            "WASM_PACK_VERSION": "${localEnv:WASM_PACK_VERSION}",
+            "GO_VERSION": "${localEnv:GO_VERSION}",
+            "NODE_VERSION": "${localEnv:NODE_VERSION}",
+            "PNPM_VERSION": "${localEnv:PNPM_VERSION}"
+        }
+    },
+    // ── Named volumes ────────────────────────────────────────────────────────
+    // This is one of the most important parts of the entire devcontainer setup.
+    //
+    // The problem: Rust's build artifacts (engine/target/) can grow to several
+    // GB. If this directory lives on the bind-mounted workspace, two things
+    // happen:
+    //   1. On WSL2, filesystem calls across the boundary are slow — Rust
+    //      compilation feels broken
+    //   2. Every container rebuild wipes the cache — you wait 20+ minutes
+    //      for a fresh Rust compile every time
+    //
+    // The solution: named Docker volumes. These live inside Docker's own
+    // filesystem, completely bypassing the WSL2 boundary. Compilation is
+    // fast and survives container rebuilds.
+    //
+    // Think of named volumes as Docker's own internal hard drives —
+    // they persist independently of the container lifecycle.
+    "mounts": [
+        // Rust build artifacts — the biggest offender for compilation time
+        "source=dt-rust-target,target=/workspaces/digital-twin-platform/engine/target,type=volume",
+        // Go module cache — downloaded modules, survives rebuilds
+        "source=dt-go-cache,target=/home/developer/.cache/go,type=volume",
+        // pnpm content-addressable store — downloaded packages, survives rebuilds
+        "source=dt-pnpm-store,target=/home/developer/.local/share/pnpm,type=volume"
+    ],
+    // ── Runtime arguments ────────────────────────────────────────────────────
+    // Runs the container as our non-root developer user (UID 1000)
+    // Consistent with how we set up the user in the Dockerfile
+    "runArgs": [
+        "--user",
+        "developer"
+    ],
+    // ── Port forwarding ──────────────────────────────────────────────────────
+    // Ports we expect our services to run on locally.
+    // VSCode will automatically forward these from the container to your
+    // Windows browser so you can open them normally.
+    //
+    // 5173 — Vite dev server (React frontend)
+    // 8080 — Go API server
+    // 8081 — Go sync server (WebSocket)
+    "forwardPorts": [
+        5173,
+        8080,
+        8081
+    ],
+    "portsAttributes": {
+        "5173": {
+            "label": "Frontend (Vite)"
+        },
+        "8080": {
+            "label": "API Server (Go)"
+        },
+        "8081": {
+            "label": "Sync Server (Go)"
+        }
+    },
+    // ── VSCode extensions ────────────────────────────────────────────────────
+    // These install automatically inside the container.
+    // Grouped by concern so it's clear why each one exists.
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                // Rust — engine team
+                // rust-analyzer is the official Rust language server.
+                // Gives you autocomplete, type hints, inline errors, go-to-definition.
+                // The equivalent of Visual Studio's IntelliSense for Rust.
+                "rust-lang.rust-analyzer",
+                // TOML support — Rust's config files (Cargo.toml) are written in TOML
+                "tamasfe.even-better-toml",
+                // WebAssembly syntax highlighting
+                "dtsvet.vscode-wasm",
+                // Go — web team (backend)
+                // Official Go extension — language server, debugger, test runner
+                "golang.go",
+                // TypeScript / React — web team (frontend) + engine team (renderer)
+                // ESLint — catches code quality issues as you type
+                "dbaeumer.vscode-eslint",
+                // Prettier — consistent code formatting across the team
+                "esbenp.prettier-vscode",
+                // General development
+                // GitLens — makes git history and blame visible inline in the editor
+                "eamodio.gitlens",
+                // Docker — syntax highlighting and management for Dockerfiles
+                "ms-azuretools.vscode-docker",
+                // DotENV — syntax highlighting for .env files
+                "mikestead.dotenv",
+                // EditorConfig — enforces consistent indentation and line endings
+                "editorconfig.editorconfig"
+            ],
+            "settings": {
+                // Use rust-analyzer for all Rust files
+                "rust-analyzer.check.command": "clippy",
+                // Format Rust files on save using rustfmt
+                "[rust]": {
+                    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+                    "editor.formatOnSave": true
+                },
+                // Format Go files on save
+                "[go]": {
+                    "editor.defaultFormatter": "golang.go",
+                    "editor.formatOnSave": true
+                },
+                // Format TypeScript files on save using Prettier
+                "[typescript]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode",
+                    "editor.formatOnSave": true
+                },
+                "[typescriptreact]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode",
+                    "editor.formatOnSave": true
+                }
+            }
+        }
+    },
+    // ── Post-create command ──────────────────────────────────────────────────
+    // Runs once after the container is created for the first time.
+    // This is the equivalent of Unity's "reimport all assets" on first open —
+    // it gets everything into a ready state automatically.
+    //
+    // make setup will install all project-level dependencies.
+    // We haven't written the Makefile yet — this is the target we're working toward.
+    "postCreateCommand": "make setup"
+}
