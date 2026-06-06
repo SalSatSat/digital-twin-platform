@@ -84,8 +84,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # We install via the binary installer, NOT via "cargo install wasm-pack".
 # cargo install compiles from source — that takes 10+ minutes.
 # The binary installer downloads a pre-compiled executable — takes seconds.
-RUN curl -sSf https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-init.sh \
-    | sh
+RUN . $HOME/.cargo/env \
+    && curl -sSL https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+    | tar -xz --strip-components=1 -C $CARGO_HOME/bin/ \
+        wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack
 
 # ── Zone 2c: Go ───────────────────────────────────────────────────────────────
 # We install Go via the official tarball, not apt.
