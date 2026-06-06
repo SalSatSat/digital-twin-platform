@@ -1,0 +1,128 @@
+# ── Digital Twin Platform — Docker Compose ───────────────────────────────────
+#
+# This file defines the runtime services for the platform.
+# It is NOT the devcontainer — that lives in .devcontainer/.
+#
+# Usage (from inside the devcontainer):
+#   docker compose up         — start all services
+#   docker compose up -d      — start all services in background
+#   docker compose down       — stop all services
+#   docker compose down -v    — stop all services and remove volumes
+#
+# During development, Go services are run via `make dev` not compose.
+# Compose manages infrastructure (postgres, redis) that those services
+# depend on.
+
+services:
+    # ── PostgreSQL ─────────────────────────────────────────────────────────────
+    # Primary persistent storage for the platform.
+    # Stores: simulation state, entity data, user data, plugin configuration.
+    #
+    # We use postgres:17-alpine because:
+    # - alpine variant is minimal and fast to pull
+    # - version 17 is current stable with long support horizon
+    postgres:
+        image: postgres:17-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:-dt_user}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dt_password}
+            POSTGRES_DB: ${POSTGRES_DB:-dt_platform}
+        ports:
+            # Expose to host so you can connect with a database GUI during development
+            # Format: "host_port:container_port"
+            - "5432:5432"
+        volumes:
+            # Named volume — postgres data persists across container restarts
+            # Without this, your database is wiped every time compose restarts
+            - dt-postgres-data:/var/lib/postgresql/data
+        networks:
+            - dt-network
+        healthcheck:
+            # Compose will wait for postgres to be ready before starting
+            # services that depend on it
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dt_user}"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+
+    # ── Redis ──────────────────────────────────────────────────────────────────
+    # Fast in-memory store for realtime sync state.
+    # Stores: active simulation tick state, WebSocket session data,
+    #         ephemeral state that doesn't need to survive a restart.
+    #
+    # The distinction between postgres and redis:
+    # - postgres = what happened (persistent, durable, queryable)
+    # - redis    = what is happening right now (fast, ephemeral, realtime)
+    redis:
+        image: redis:7-alpine
+        restart: unless-stopped
+        ports:
+            - "6379:6379"
+        volumes:
+            - dt-redis-data:/data
+        networks:
+            - dt-network
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+
+    # ── API Server ─────────────────────────────────────────────────────────────
+    # Go REST/gRPC API — handles auth, persistence, business logic.
+    # Scaffolded here but not yet built — image will be added in a later phase
+    # when the Go service has enough implementation to containerize.
+    #
+    # Uncomment and complete when ready:
+    # api:
+    #   build:
+    #     context: ./server/api
+    #     dockerfile: Dockerfile
+    #   restart: unless-stopped
+    #   environment:
+    #     DATABASE_URL: postgres://${POSTGRES_USER:-dt_user}:${POSTGRES_PASSWORD:-dt_password}@postgres:5432/${POSTGRES_DB:-dt_platform}
+    #     REDIS_URL: redis://redis:6379
+    #   ports:
+    #     - "8080:8080"
+    #   depends_on:
+    #     postgres:
+    #       condition: service_healthy
+    #     redis:
+    #       condition: service_healthy
+    #   networks:
+    #     - dt-network
+
+    # ── Sync Server ────────────────────────────────────────────────────────────
+    # Go WebSocket server — handles realtime state broadcast.
+    # Scaffolded here, uncomment when the sync service is implemented.
+    #
+    # sync:
+    #   build:
+    #     context: ./server/sync
+    #     dockerfile: Dockerfile
+    #   restart: unless-stopped
+    #   environment:
+    #     REDIS_URL: redis://redis:6379
+    #   ports:
+    #     - "8081:8081"
+    #   depends_on:
+    #     redis:
+    #       condition: service_healthy
+    #   networks:
+    #     - dt-network
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+# All services share a single internal network.
+# Services reach each other by service name — e.g. "postgres", "redis".
+# This is cleaner and more predictable than using IP addresses.
+networks:
+    dt-network:
+        driver: bridge
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+# Named volumes persist data across container restarts.
+# These are managed by Docker — not tied to any host filesystem path.
+volumes:
+    dt-postgres-data:
+    dt-redis-data:
