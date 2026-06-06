@@ -1,0 +1,7 @@
+# Rust build artifacts
+target/
+
+# Lock files for individual crates — only the workspace Cargo.lock is kept
+core/Cargo.lock
+plugins/Cargo.lock
+wasm/Cargo.lock
