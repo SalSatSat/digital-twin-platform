@@ -132,11 +132,14 @@
     // ── Post-create command ──────────────────────────────────────────────────
     // Runs once after the container is created for the first time.
     //
-    // We fix ownership of two named volumes that Docker creates as root:
-    // 1. engine/target  — Rust build artifacts volume
-    // 2. .local         — pnpm store volume
+    // Two named Docker volumes (engine/target and the pnpm store) are created
+    // as root by Docker before the container starts. We fix their ownership
+    // first so the developer user can write to them, then run make setup to
+    // install all project dependencies automatically.
     //
-    // Once permissions are correct we print a ready message.
-    // Run `make setup` manually to install all project dependencies.
-    "postCreateCommand": "sudo chown -R developer:developer /workspaces/digital-twin-platform/engine/target && sudo chown -R developer:developer /home/developer/.local && echo 'Ready. Run make setup to install dependencies.'"
+    // Breakdown:
+    //   chown engine/target — allows cargo to write Rust build artifacts
+    //   chown .local        — allows pnpm to write to its store
+    //   make setup          — installs all dependencies across all packages
+    "postCreateCommand": "sudo chown -R developer:developer /workspaces/digital-twin-platform/engine/target && sudo chown -R developer:developer /home/developer/.local && make setup"
 }
