@@ -1,0 +1,18 @@
+{
+  "name": "@dt-platform/renderer",
+  "version": "0.1.0",
+  "description": "Three.js + WebGPU renderer for the Digital Twin Platform",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src",
+    "format": "prettier --write src"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "three": "^0.177.0"
+  }
+}
