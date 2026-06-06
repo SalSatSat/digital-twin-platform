@@ -31,3 +31,7 @@ Thumbs.db
 
 # ── Docker ───────────────────────────────────────────────────
 docker/volumes/
+
+# Go binaries built in service directories
+server/api/api
+server/sync/sync
