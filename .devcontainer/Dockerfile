@@ -94,7 +94,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 RUN . $HOME/.cargo/env \
     && curl -sSL https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz \
     | tar -xz --strip-components=1 -C $CARGO_HOME/bin/ \
-        wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack
+    wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack
 
 # ── Zone 2c: Go ───────────────────────────────────────────────────────────────
 # We install Go via the official tarball, not apt.
@@ -127,7 +127,8 @@ RUN curl -sSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-lin
     | tar -xJ -C /home/developer/ \
     && mv /home/developer/node-v${NODE_VERSION}-linux-x64 /home/developer/.node \
     && corepack enable \
-    && corepack prepare pnpm@${PNPM_VERSION} --activate
+    && corepack prepare pnpm@${PNPM_VERSION} --activate \
+    && pnpm config set store-dir /home/developer/.local/share/pnpm
 
 # ── Zone 3: Global development tooling ───────────────────────────────────────
 # cargo-watch watches your Rust source files and re-runs a command when

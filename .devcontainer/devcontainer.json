@@ -131,10 +131,12 @@
     },
     // ── Post-create command ──────────────────────────────────────────────────
     // Runs once after the container is created for the first time.
-    // This is the equivalent of Unity's "reimport all assets" on first open —
-    // it gets everything into a ready state automatically.
     //
-    // make setup will install all project-level dependencies.
-    // We haven't written the Makefile yet — this is the target we're working toward.
-    "postCreateCommand": "echo 'Setup skipped — run make setup manually'"
+    // We fix ownership of two named volumes that Docker creates as root:
+    // 1. engine/target  — Rust build artifacts volume
+    // 2. .local         — pnpm store volume
+    //
+    // Once permissions are correct we print a ready message.
+    // Run `make setup` manually to install all project dependencies.
+    "postCreateCommand": "sudo chown -R developer:developer /workspaces/digital-twin-platform/engine/target && sudo chown -R developer:developer /home/developer/.local && echo 'Ready. Run make setup to install dependencies.'"
 }
