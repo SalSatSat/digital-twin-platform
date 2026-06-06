@@ -1,0 +1,33 @@
+# ── Rust ─────────────────────────────────────────────────────
+engine/target/
+
+# ── Go ───────────────────────────────────────────────────────
+server/api/bin/
+server/sync/bin/
+
+# ── Node ─────────────────────────────────────────────────────
+node_modules/
+client/app/node_modules/
+client/renderer/node_modules/
+dist/
+.next/
+
+# ── WASM build output ────────────────────────────────────────
+engine/wasm/pkg/
+
+# ── Environment files ────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── OS junk ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── VSCode ───────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ── Docker ───────────────────────────────────────────────────
+docker/volumes/
