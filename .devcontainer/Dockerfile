@@ -126,7 +126,7 @@ RUN curl -sSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-lin
 # cargo-watch watches your Rust source files and re-runs a command when
 # they change. The equivalent of Unity's automatic recompile on save.
 # We install this now so it's always available without waiting.
-RUN cargo install cargo-watch
+RUN . $HOME/.cargo/env && cargo install cargo-watch
 
 # ── Final environment ─────────────────────────────────────────────────────────
 # Set the working directory to where the repo will be mounted
@@ -135,7 +135,8 @@ WORKDIR /workspaces/digital-twin-platform
 # Verify all toolchains are reachable — this line fails the build
 # loudly if any tool is missing, rather than silently producing
 # a broken container
-RUN rustc --version \
+RUN . $HOME/.cargo/env \
+    && rustc --version \
     && cargo --version \
     && wasm-pack --version \
     && go version \
