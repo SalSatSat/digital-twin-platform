@@ -136,5 +136,5 @@
     //
     // make setup will install all project-level dependencies.
     // We haven't written the Makefile yet — this is the target we're working toward.
-    "postCreateCommand": "make setup"
+    "postCreateCommand": "echo 'Setup skipped — run make setup manually'"
 }
