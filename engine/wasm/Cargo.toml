@@ -2,5 +2,26 @@
 name = "dt-engine-wasm"
 version = "0.1.0"
 edition = "2024"
+description = "WASM bindings for the Digital Twin Platform engine"
+license = "MIT"
+
+[lib]
+# cdylib — C-compatible dynamic library
+# Required for WASM compilation targets.
+# Without this, wasm-pack cannot produce a .wasm file.
+crate-type = ["cdylib"]
 
 [dependencies]
+# wasm-bindgen — bridges Rust and JavaScript
+# Provides the #[wasm_bindgen] attribute that marks functions
+# and types as accessible from JavaScript.
+wasm-bindgen = "0.2.122"
+
+# dt-engine-core — the ECS core this crate wraps
+dt-engine-core = { path = "../core" }
+
+# hecs — needed to store Entity handles in the WASM layer
+hecs = "0.11"
+
+# glam — needed to construct Vec3 values at the WASM boundary
+glam = { version = "0.32", features = ["bytemuck"] }
