@@ -4,3 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# hecs — minimal, fast ECS storage
+# We use hecs for entity and component storage only.
+# The system scheduler and world wrapper are our own.
+hecs = "0.11"
+
+# glam — fast, WASM-compatible game math
+# Provides Vec3, Quat, Mat4 and other math primitives.
+# Used by the renderer too — shared math types across the boundary.
+glam = { version = "0.32", features = ["bytemuck"] }
+
+[dev-dependencies]
+# approx — floating point comparison in tests
+# Comparing f32 values with == is unreliable due to floating point
+# precision. approx gives us assert_relative_eq! which handles this correctly.
+approx = "0.5"
