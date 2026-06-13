@@ -55,6 +55,28 @@ impl World {
         self.inner.remove_one::<T>(entity)
     }
 
+    /// Returns an immutable reference to a component on the given entity.
+    ///
+    /// Returns an error if the entity does not exist or does not have
+    /// the requested component type.
+    pub fn get_component<T: hecs::Component>(
+        &self,
+        entity: Entity,
+    ) -> Result<hecs::Ref<'_, T>, hecs::ComponentError> {
+        self.inner.get::<&T>(entity)
+    }
+
+    /// Returns a mutable reference to a component on the given entity.
+    ///
+    /// Returns an error if the entity does not exist or does not have
+    /// the requested component type.
+    pub fn get_component_mut<T: hecs::Component>(
+        &mut self,
+        entity: Entity,
+    ) -> Result<hecs::RefMut<'_, T>, hecs::ComponentError> {
+        self.inner.get::<&mut T>(entity)
+    }
+
     /// Returns true if the entity exists in the World.
     pub fn contains(&self, entity: Entity) -> bool {
         self.inner.contains(entity)
@@ -119,8 +141,8 @@ mod tests {
         // ACT
         world.add_component(entity, transform).unwrap();
 
-        // ASSERT — retrieve and verify the component
-        let retrieved = world.inner().get::<&Transform>(entity).unwrap();
+        // ASSERT — retrieve and verify the component via our own API
+        let retrieved = world.get_component::<Transform>(entity).unwrap();
         assert_eq!(retrieved.position, Vec3::new(1.0, 2.0, 3.0));
     }
 
@@ -136,7 +158,42 @@ mod tests {
 
         // ASSERT — component was removed successfully
         assert!(result.is_ok());
-        assert!(world.inner().get::<&Transform>(entity).is_err());
+        assert!(world.get_component::<Transform>(entity).is_err());
+    }
+
+    #[test]
+    fn world_get_component_returns_correct_value() {
+        // ARRANGE
+        let mut world = World::new();
+        let entity = world.spawn();
+        let expected = Vec3::new(4.0, 5.0, 6.0);
+        world
+            .add_component(entity, Transform::new(expected))
+            .unwrap();
+
+        // ACT
+        let transform = world.get_component::<Transform>(entity).unwrap();
+
+        // ASSERT
+        assert_eq!(transform.position, expected);
+    }
+
+    #[test]
+    fn world_get_component_mut_allows_modification() {
+        // ARRANGE
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.add_component(entity, Transform::default()).unwrap();
+
+        // ACT — modify the component via mutable reference
+        {
+            let mut transform = world.get_component_mut::<Transform>(entity).unwrap();
+            transform.position = Vec3::new(9.0, 0.0, 0.0);
+        }
+
+        // ASSERT — modification persisted
+        let transform = world.get_component::<Transform>(entity).unwrap();
+        assert_eq!(transform.position, Vec3::new(9.0, 0.0, 0.0));
     }
 
     #[test]
@@ -167,8 +224,8 @@ mod tests {
             .add_component(entity, Velocity::new(Vec3::new(1.0, 0.0, 0.0)))
             .unwrap();
 
-        // ASSERT — entity has both components
-        assert!(world.inner().get::<&Transform>(entity).is_ok());
-        assert!(world.inner().get::<&Velocity>(entity).is_ok());
+        // ASSERT — both components are retrievable via our own API
+        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<Velocity>(entity).is_ok());
     }
 }
