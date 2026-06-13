@@ -1,9 +1,9 @@
 use glam::Vec3;
 
-/// Transform component — represents position in 3D space.
+/// Represents the position of an entity in 3D space.
 ///
-/// Every entity that exists in the simulation world has a Transform.
-/// This is the equivalent of Unity's Transform component.
+/// Attach this component to any entity that has a location in the world.
+/// Entities without a Transform have no spatial representation.
 ///
 /// Currently contains only position. Rotation and scale will be
 /// added when the renderer requires them.
@@ -20,6 +20,7 @@ impl Transform {
 }
 
 impl Default for Transform {
+    /// Creates a Transform at the world origin (0.0, 0.0, 0.0).
     fn default() -> Self {
         Self {
             position: Vec3::ZERO,

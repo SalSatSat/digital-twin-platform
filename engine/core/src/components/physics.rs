@@ -1,12 +1,12 @@
 use glam::Vec3;
 
-/// Velocity component — represents movement per simulation tick.
+/// Represents the velocity of an entity as a 3D vector.
 ///
-/// An entity with both Transform and Velocity will have its position
-/// updated each tick by the MovementSystem.
+/// Attach this component to any entity that moves each tick.
+/// Entities without a Velocity component are considered stationary.
 ///
-/// Entities without Velocity are static — they have a position but
-/// do not move unless explicitly teleported.
+/// The direction and magnitude of the vector determine the direction
+/// and speed of movement respectively.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Velocity {
     pub value: Vec3,
@@ -20,6 +20,7 @@ impl Velocity {
 }
 
 impl Default for Velocity {
+    /// Creates a Velocity of zero — no movement in any direction.
     fn default() -> Self {
         Self { value: Vec3::ZERO }
     }
