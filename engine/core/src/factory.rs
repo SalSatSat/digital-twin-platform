@@ -106,7 +106,7 @@ mod tests {
 
         // ASSERT — entity exists and has a Transform at the correct position
         assert!(world.contains(entity));
-        let transform = world.inner().get::<&Transform>(entity).unwrap();
+        let transform = world.get_component::<Transform>(entity).unwrap();
         assert_eq!(transform.position, position);
     }
 
@@ -120,7 +120,7 @@ mod tests {
         let entity = factory.create_static_object(&mut world, Vec3::ZERO);
 
         // ASSERT — static objects must not have a Velocity component
-        assert!(world.inner().get::<&Velocity>(entity).is_err());
+        assert!(world.get_component::<Velocity>(entity).is_err());
     }
 
     #[test]
@@ -136,8 +136,8 @@ mod tests {
 
         // ASSERT — entity has both Transform and Velocity
         assert!(world.contains(entity));
-        let transform = world.inner().get::<&Transform>(entity).unwrap();
-        let vel = world.inner().get::<&Velocity>(entity).unwrap();
+        let transform = world.get_component::<Transform>(entity).unwrap();
+        let vel = world.get_component::<Velocity>(entity).unwrap();
         assert_eq!(transform.position, position);
         assert_eq!(vel.value, velocity);
     }
@@ -155,8 +155,8 @@ mod tests {
         // ASSERT — entities are distinct and have independent positions
         assert_ne!(entity_a, entity_b);
         assert_eq!(world.entity_count(), 2);
-        let pos_a = world.inner().get::<&Transform>(entity_a).unwrap().position;
-        let pos_b = world.inner().get::<&Transform>(entity_b).unwrap().position;
+        let pos_a = world.get_component::<Transform>(entity_a).unwrap().position;
+        let pos_b = world.get_component::<Transform>(entity_b).unwrap().position;
         assert_ne!(pos_a, pos_b);
     }
 }
