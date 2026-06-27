@@ -236,12 +236,12 @@ application.
 | Phase 3 | WASM boundary — EngineWorld, wasm-bindgen, browser verified |
 | Phase 4 | First render — Three.js, React, entity driven by Rust ECS |
 | Phase 5 | Separate ECS ownership from rendering | Phase 4 |
+| Phase 6 | WebGPU path with WebGL fallback | Phase 5 |
 
 **Upcoming**
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 6 | WebGPU path with WebGL fallback | Phase 5 |
 | Phase 7 | Bundle refactor — EntityFactory → generic Bundle trait | Phase 5 |
 | Phase 8 | Multiple entities | Phase 7 |
 | Phase 9 | Multiple camera support | Phase 8 |
