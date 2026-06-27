@@ -229,28 +229,29 @@ application.
 
 **Completed**
 
-| Phase | Description |
-|---|---|
-| Phase 1 | Project scaffold, devcontainer, Makefile, Docker Compose |
-| Phase 2 | Rust ECS core — World, Components, Systems, EntityFactory |
-| Phase 3 | WASM boundary — EngineWorld, wasm-bindgen, browser verified |
-| Phase 4 | First render — Three.js, React, entity driven by Rust ECS |
-| Phase 5 | Separate ECS ownership from rendering | Phase 4 |
-| Phase 6 | WebGPU path with WebGL fallback | Phase 5 |
+| Phase | Description | Depends On |
+|---|---|---|
+| Phase 1 | Project scaffold, devcontainer, Makefile, Docker Compose | — |
+| Phase 2 | Rust ECS core — World, Components, Systems, EntityFactory | Phase 1 |
+| Phase 3 | WASM boundary — EngineWorld, wasm-bindgen, browser verified | Phase 2 |
+| Phase 4 | First render — Three.js, React, entity driven by Rust ECS | Phase 3 |
+| Phase 5 | ECS and Renderer ownership split — Engine class introduced | Phase 4 |
+| Phase 6 | WebGPU backend with WebGL fallback — backend abstraction layer | Phase 5 |
+
 
 **Upcoming**
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 7 | Bundle refactor — EntityFactory → generic Bundle trait | Phase 5 |
-| Phase 8 | Multiple entities | Phase 7 |
+| Phase 7 | Bundle refactor — generic Bundle trait, EntityInfo, HierarchyNode, EntityRegistry with built-in categories (Default, Camera) and contexts (Editor, Runtime, Universal) | Phase 6 |
+| Phase 8 | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system | Phase 7 |
 | Phase 9 | Multiple camera support | Phase 8 |
 | Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting | Phase 9 |
 | Phase 11 | Camera controls — Unity-editor-style navigation | Phase 10 |
-| Phase 12 | Entity hierarchy — parent/child relationships | Phase 8 |
+| Phase 12 | Entity hierarchy — parent/child relationships, editor-facing tree | Phase 8 |
 | Phase 13 | GLB model loading at runtime | Phase 12 |
 | Phase 14 | Event bus — OnEntitySelected and other platform events | Phase 12 |
-| Phase 15 | Runtime editor — UI, Hierarchy panel, Inspector | Phase 13, 14 |
+| Phase 15 | Runtime editor — UI, Hierarchy panel, Inspector, registry validation | Phase 13, 14 |
 | Phase 16 | Debug metrics — FPS, entity count, render stats | Phase 15 |
 | Phase 17 | Go backend — persistence and realtime sync | Phase 15 |
 
