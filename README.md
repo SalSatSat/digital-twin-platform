@@ -82,28 +82,39 @@ Run `make help` inside the devcontainer for the full list.
 
 ### Architecture
 
-The Digital Twin Platform is built as a layered system where a Rust ECS core drives all entity state, compiled to WebAssembly so it runs in the browser, consumed by a Three.js renderer, and mounted in a React application.
+The Digital Twin Platform is built as a layered system where a Rust ECS core 
+drives all entity state, compiled to WebAssembly so it runs in the browser. 
+An Engine class owns the WASM runtime and exposes a clean API for ticking 
+the world and reading entity state. A Renderer consumes that state each frame 
+to drive a Three.js scene, and both are mounted and managed by a React 
+application.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   React App (client/app)             │
-│                      EngineView                      │
-└───────────────────────┬─────────────────────────────┘
-                        │ mounts
-┌───────────────────────▼─────────────────────────────┐
-│              Renderer (client/renderer)              │
-│         Three.js Scene + Camera + WebGL/WebGPU       │
-└───────────────────────┬─────────────────────────────┘
-                        │ calls each frame
-┌───────────────────────▼─────────────────────────────┐
-│            WASM Bindings (engine/wasm)               │
-│       EngineWorld — JavaScript-facing API            │
-└───────────────────────┬─────────────────────────────┘
-                        │ wraps
-┌───────────────────────▼─────────────────────────────┐
-│             ECS Core (engine/core)                   │
-│     World · EntityFactory · Systems · Components     │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                       React App (client/app)                        │
+│                            EngineView                               │
+│                 creates and manages lifecycle of both               │
+└──────────────────────┬──────────────────────┬───────────────────────┘
+                       │ owns                 │ owns
+         ┌─────────────▼─────────────┐ ┌──────▼──────────────────────┐
+         │           Engine          │ │          Renderer            │
+         │   Owns WASM EngineWorld   │ │    Three.js Scene            │
+         │   tick()                  │ │    Camera                    │
+         │   getPosition()           │ │    WebGL / WebGPU            │
+         │   spawnDynamicObject()    │ │    Render loop               │
+         └─────────────┬─────────────┘ └──────┬───────────────────────┘
+                       │ ▲                     │ reads from Engine
+                       │ └─────────────────────┘
+                       │ wraps
+┌──────────────────────▼──────────────────────────────────────────────┐
+│                    WASM Bindings (engine/wasm)                       │
+│                EngineWorld — JavaScript-facing API                   │
+└──────────────────────┬──────────────────────────────────────────────┘
+                       │ wraps
+┌──────────────────────▼──────────────────────────────────────────────┐
+│                      ECS Core (engine/core)                          │
+│           World · EntityFactory · Systems · Components               │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Project Structure
@@ -224,12 +235,12 @@ The Digital Twin Platform is built as a layered system where a Rust ECS core dri
 | Phase 2 | Rust ECS core — World, Components, Systems, EntityFactory |
 | Phase 3 | WASM boundary — EngineWorld, wasm-bindgen, browser verified |
 | Phase 4 | First render — Three.js, React, entity driven by Rust ECS |
+| Phase 5 | Separate ECS ownership from rendering | Phase 4 |
 
 **Upcoming**
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 5 | Separate ECS ownership from rendering | Phase 4 |
 | Phase 6 | WebGPU path with WebGL fallback | Phase 5 |
 | Phase 7 | Bundle refactor — EntityFactory → generic Bundle trait | Phase 5 |
 | Phase 8 | Multiple entities | Phase 7 |
