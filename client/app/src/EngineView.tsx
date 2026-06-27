@@ -1,42 +1,41 @@
 import { useEffect, useRef } from "react";
-import { Renderer } from "@dt-platform/renderer";
+import { Engine, Renderer } from "@dt-platform/renderer";
 
 /**
- * Mounts the Renderer onto a canvas element and manages its lifecycle.
+ * Mounts the Engine and Renderer, managing their full lifecycle.
  *
- * The Renderer is created when this component mounts and disposed when
- * it unmounts, ensuring WASM and Three.js resources are properly cleaned
- * up when the component is no longer in use.
+ * Engine is created first and initialized before the Renderer
+ * is set up — the Renderer reads from Engine but does not own it.
+ * Both are disposed when this component unmounts.
  */
 export function EngineView() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) {
-      return;
-    }
+    if (!canvasRef.current) return;
 
-    const renderer = new Renderer(canvasRef.current);
+    const engine = new Engine();
+    const renderer = new Renderer(canvasRef.current, engine);
     let isCancelled = false;
 
-    renderer.initialize().then(() => {
-      // Guard against the component unmounting before initialize() resolves
+    engine.initialize().then(() => {
       if (!isCancelled) {
+        renderer.setup();
         renderer.start();
       }
     });
 
-    // Cleanup function — runs when the component unmounts
     return () => {
       isCancelled = true;
       renderer.dispose();
+      engine.dispose();
     };
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: "100%", height: "100%", display: "block" }}
+      style={{ width: "100vw", height: "100vh", display: "block" }}
     />
   );
 }
