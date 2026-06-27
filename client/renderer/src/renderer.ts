@@ -1,19 +1,22 @@
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
+import { RenderBackend } from "./backends/backend";
+import { WebGLBackend } from "./backends/webgl";
+import { WebGPUBackend } from "./backends/webgpu";
 
 /**
- * Owns the Three.js scene, camera, and WebGL renderer.
+ * Owns the Three.js scene, camera, and active render backend.
  * Reads entity state from Engine each frame and updates
  * the scene to match.
  *
- * Renderer has no knowledge of ECS internals — it only
- * reads positions and other visual data from Engine via
- * its public API.
+ * Automatically selects WebGPU if available in the browser,
+ * falling back to WebGL otherwise. The render loop is identical
+ * regardless of which backend is active.
  */
 export class Renderer {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
-  private webglRenderer: THREE.WebGLRenderer;
+  private backend: RenderBackend;
   private mesh: THREE.Mesh | null = null;
   private entityHandle: number | null = null;
 
@@ -28,7 +31,7 @@ export class Renderer {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1a1a);
 
-    // Camera — use window dimensions for correct initial sizing
+    // Camera
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
@@ -37,28 +40,29 @@ export class Renderer {
     );
     this.camera.position.z = 5;
 
-    // WebGL Renderer — use window dimensions
-    this.webglRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.webglRenderer.setPixelRatio(window.devicePixelRatio);
-    this.webglRenderer.setSize(window.innerWidth, window.innerHeight);
+    // Select backend based on browser capability
+    const hasWebGPU = !!navigator.gpu;
+    this.backend = hasWebGPU
+      ? new WebGPUBackend(canvas)
+      : new WebGLBackend(canvas);
 
-    // Resize handler
+    console.log(`Render backend: ${hasWebGPU ? "WebGPU" : "WebGL (fallback)"}`);
+
+    this.backend.setPixelRatio(window.devicePixelRatio);
+    this.backend.setSize(window.innerWidth, window.innerHeight);
+
+    // Event listeners
     window.addEventListener("resize", this.onResize);
-
-    // Fullscreen handler
     window.addEventListener("keydown", this.onKeyDown);
   }
 
   /**
-   * Handles window resize — updates renderer size and camera aspect ratio.
+   * Initializes the render backend.
+   * Must be awaited before calling setup().
    */
-  private onResize = (): void => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-    this.webglRenderer.setSize(width, height);
-  };
+  async initialize(): Promise<void> {
+    await this.backend.initialize();
+  }
 
   /**
    * Sets up the initial scene contents.
@@ -107,7 +111,7 @@ export class Renderer {
   }
 
   /**
-   * Cleans up Three.js resources.
+   * Cleans up Three.js and backend resources.
    * Does not dispose the Engine — the caller owns that lifecycle.
    */
   dispose(): void {
@@ -118,34 +122,23 @@ export class Renderer {
     if (this.mesh?.material instanceof THREE.Material) {
       this.mesh.material.dispose();
     }
-    this.webglRenderer.dispose();
+    this.backend.dispose();
   }
 
   /**
-   * The render loop — advances ECS state and renders the scene.
+   * Handles window resize.
    */
-  private renderLoop = (currentTime: number): void => {
-    const deltaTime = (currentTime - this.lastFrameTime) / 1000;
-    this.lastFrameTime = currentTime;
-
-    // Tick the ECS via Engine
-    this.engine.tick(deltaTime);
-
-    // Read updated position and apply to mesh
-    if (this.entityHandle !== null && this.mesh) {
-      const position = this.engine.getPosition(this.entityHandle);
-      if (position) {
-        this.mesh.position.set(position[0], position[1], position[2]);
-      }
-    }
-
-    this.webglRenderer.render(this.scene, this.camera);
-    this.animationFrameId = requestAnimationFrame(this.renderLoop);
+  private onResize = (): void => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.backend.setSize(width, height);
   };
 
   /**
-   * Toggles fullscreen mode on the canvas element.
-   * Press F to enter fullscreen, Escape to exit (built into the browser).
+   * Handles keyboard input.
+   * F — toggle fullscreen.
    */
   private onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "f" || event.key === "F") {
@@ -155,5 +148,31 @@ export class Renderer {
         document.exitFullscreen();
       }
     }
+  };
+
+  /**
+   * The render loop — advances ECS state and renders the scene.
+   */
+  private renderLoop = (currentTime: number): void => {
+    const deltaTime = (currentTime - this.lastFrameTime) / 1000;
+    this.lastFrameTime = currentTime;
+
+    try {
+      this.engine.tick(deltaTime);
+
+      if (this.entityHandle !== null && this.mesh) {
+        const position = this.engine.getPosition(this.entityHandle);
+        if (position) {
+          this.mesh.position.set(position[0], position[1], position[2]);
+        }
+      }
+    } catch (e) {
+      console.warn("Engine tick error — stopping render loop:", e);
+      this.stop();
+      return;
+    }
+
+    this.backend.render(this.scene, this.camera);
+    this.animationFrameId = requestAnimationFrame(this.renderLoop);
   };
 }

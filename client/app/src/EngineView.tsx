@@ -4,8 +4,8 @@ import { Engine, Renderer } from "@dt-platform/renderer";
 /**
  * Mounts the Engine and Renderer, managing their full lifecycle.
  *
- * Engine is created first and initialized before the Renderer
- * is set up — the Renderer reads from Engine but does not own it.
+ * Engine is initialized first, then the Renderer backend is
+ * initialized, then the scene is set up and the render loop starts.
  * Both are disposed when this component unmounts.
  */
 export function EngineView() {
@@ -18,12 +18,16 @@ export function EngineView() {
     const renderer = new Renderer(canvasRef.current, engine);
     let isCancelled = false;
 
-    engine.initialize().then(() => {
+    async function start() {
+      await engine.initialize();
+      await renderer.initialize();
       if (!isCancelled) {
         renderer.setup();
         renderer.start();
       }
-    });
+    }
+
+    start();
 
     return () => {
       isCancelled = true;
