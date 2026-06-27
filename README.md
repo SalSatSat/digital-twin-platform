@@ -62,7 +62,7 @@ Software:
    make dev
 ```
 
-### Available Commands
+**Available Commands**
 
 Run `make help` inside the devcontainer for the full list.
 
@@ -79,6 +79,32 @@ Run `make help` inside the devcontainer for the full list.
 | `make lint` | Run all linters |
 | `make fmt` | Format all code |
 | `make clean` | Remove all build artifacts |
+
+### Architecture
+
+The Digital Twin Platform is built as a layered system where a Rust ECS core drives all entity state, compiled to WebAssembly so it runs in the browser, consumed by a Three.js renderer, and mounted in a React application.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   React App (client/app)             │
+│                      EngineView                      │
+└───────────────────────┬─────────────────────────────┘
+                        │ mounts
+┌───────────────────────▼─────────────────────────────┐
+│              Renderer (client/renderer)              │
+│         Three.js Scene + Camera + WebGL/WebGPU       │
+└───────────────────────┬─────────────────────────────┘
+                        │ calls each frame
+┌───────────────────────▼─────────────────────────────┐
+│            WASM Bindings (engine/wasm)               │
+│       EngineWorld — JavaScript-facing API            │
+└───────────────────────┬─────────────────────────────┘
+                        │ wraps
+┌───────────────────────▼─────────────────────────────┐
+│             ECS Core (engine/core)                   │
+│     World · EntityFactory · Systems · Components     │
+└─────────────────────────────────────────────────────┘
+```
 
 ### Project Structure
 
@@ -114,6 +140,35 @@ Run `make help` inside the devcontainer for the full list.
     ├── docker-compose.yml    # Runtime infrastructure services
     ├── Makefile              # Developer command vocabulary
     └── README.md
+
+**Team Ownership**
+
+| Directory | Owner | Responsibility |
+|---|---|---|
+| `engine/core` | Engine team | Rust ECS runtime |
+| `engine/wasm` | Engine team | WASM bindings |
+| `client/renderer` | Engine team | Three.js + WebGPU renderer |
+| `client/app` | Web team | React frontend shell |
+| `server/api` | Web team | Go REST API |
+| `server/sync` | Web team | Go realtime sync |
+| `shared/` | Both teams | Cross-team data contracts |
+
+## Technology Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| ECS Engine | Rust 1.95 + hecs 0.11 | Entity-component-system runtime |
+| Math | glam 0.32 | Vec3, Quat, Mat4 primitives |
+| WASM Bridge | wasm-bindgen + wasm-pack | Rust → JavaScript interop |
+| Renderer | Three.js 0.177 | 3D scene, WebGL/WebGPU |
+| Frontend | React 19 + TypeScript | Application shell |
+| Build Tool | Vite 8 | Frontend dev server + bundler |
+| Package Manager | pnpm 11 | Monorepo workspace management |
+| API Server | Go 1.26 | REST API (future) |
+| Sync Server | Go 1.26 + WebSocket | Realtime state sync (future) |
+| Database | PostgreSQL 17 | Persistent storage (future) |
+| Realtime Cache | Redis 7 | Ephemeral state (future) |
+| Dev Environment | Docker + devcontainer | Reproducible toolchain |
 
 ### Team
 
@@ -158,3 +213,34 @@ Run `make help` inside the devcontainer for the full list.
 | [Go](https://go.dev/) | BSD 3-Clause |
 | [PostgreSQL](https://www.postgresql.org/) | PostgreSQL License |
 | [Redis](https://redis.io/) | RSALv2 / SSPLv1 |
+
+### Roadmap
+
+**Completed**
+
+| Phase | Description |
+|---|---|
+| Phase 1 | Project scaffold, devcontainer, Makefile, Docker Compose |
+| Phase 2 | Rust ECS core — World, Components, Systems, EntityFactory |
+| Phase 3 | WASM boundary — EngineWorld, wasm-bindgen, browser verified |
+| Phase 4 | First render — Three.js, React, entity driven by Rust ECS |
+
+**Upcoming**
+
+| Phase | Description | Depends On |
+|---|---|---|
+| Phase 5 | Separate ECS ownership from rendering | Phase 4 |
+| Phase 6 | WebGPU path with WebGL fallback | Phase 5 |
+| Phase 7 | Bundle refactor — EntityFactory → generic Bundle trait | Phase 5 |
+| Phase 8 | Multiple entities | Phase 7 |
+| Phase 9 | Multiple camera support | Phase 8 |
+| Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting | Phase 9 |
+| Phase 11 | Camera controls — Unity-editor-style navigation | Phase 10 |
+| Phase 12 | Entity hierarchy — parent/child relationships | Phase 8 |
+| Phase 13 | GLB model loading at runtime | Phase 12 |
+| Phase 14 | Event bus — OnEntitySelected and other platform events | Phase 12 |
+| Phase 15 | Runtime editor — UI, Hierarchy panel, Inspector | Phase 13, 14 |
+| Phase 16 | Debug metrics — FPS, entity count, render stats | Phase 15 |
+| Phase 17 | Go backend — persistence and realtime sync | Phase 15 |
+
+> This roadmap is a living document. New phases may be added as requirements evolve.
