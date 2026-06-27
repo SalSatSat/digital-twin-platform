@@ -124,4 +124,27 @@ mod tests {
         assert_relative_eq!(pos_b.x, 0.0);
         assert_relative_eq!(pos_b.y, 2.0);
     }
+
+    #[test]
+    fn movement_system_remains_stable_over_many_ticks() {
+        // ARRANGE
+        let mut world = World::new();
+        let factory = EntityFactory::new();
+        let mut system = MovementSystem::new();
+
+        let entity =
+            factory.create_dynamic_object(&mut world, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
+
+        // ACT — run 10,000 ticks at 60fps (about 2.75 hours of simulation)
+        for _ in 0..10_000 {
+            system.run(&mut world, 1.0 / 60.0);
+        }
+
+        // ASSERT — position should be finite and match expected value
+        let transform = world.get_component::<Transform>(entity).unwrap();
+        assert!(transform.position.x.is_finite());
+        assert!(transform.position.y.is_finite());
+        assert!(transform.position.z.is_finite());
+        assert_relative_eq!(transform.position.x, 10_000.0 / 60.0, epsilon = 0.1);
+    }
 }
