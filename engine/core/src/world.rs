@@ -1,3 +1,5 @@
+use crate::bundle::Bundle;
+use crate::registry::EntityRegistry;
 use hecs::Entity;
 
 /// The central container for all entities and components.
@@ -10,13 +12,17 @@ use hecs::Entity;
 /// Systems access components via queries through inner() and inner_mut().
 pub struct World {
     inner: hecs::World,
+    /// Registry of valid entity categories and contexts.
+    /// Owned by the World and serialized with the scene.
+    pub registry: EntityRegistry,
 }
 
 impl World {
-    /// Creates a new empty World with no entities.
+    /// Creates a new empty World with a seeded EntityRegistry.
     pub fn new() -> Self {
         Self {
             inner: hecs::World::new(),
+            registry: EntityRegistry::new(),
         }
     }
 
@@ -28,10 +34,18 @@ impl World {
     /// Spawns a new empty entity with no components.
     /// Returns the Entity ID — store this to refer to the entity later.
     ///
-    /// In most cases you should use EntityFactory to spawn entities
-    /// with their initial components already attached.
+    /// Prefer spawn_bundle() for spawning entities with components.
     pub fn spawn(&mut self) -> Entity {
         self.inner.spawn(())
+    }
+
+    /// Spawns a bundle into the World and returns the Entity ID.
+    ///
+    /// This is the preferred way to create entities. Bundles ensure
+    /// every entity of a given archetype always has the correct
+    /// set of components.
+    pub fn spawn_bundle<B: Bundle>(&mut self, bundle: B) -> Entity {
+        bundle.spawn_into(self)
     }
 
     /// Adds a component to an existing entity.
@@ -111,7 +125,8 @@ impl Default for World {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{Transform, Velocity};
+    use crate::bundle::{DynamicObjectBundle, StaticObjectBundle};
+    use crate::components::{EntityInfo, HierarchyNode, Transform, Velocity};
     use glam::Vec3;
 
     #[test]
@@ -121,49 +136,81 @@ mod tests {
     }
 
     #[test]
+    fn world_has_registry_with_builtin_categories() {
+        let world = World::new();
+        assert!(world.registry.category_exists("Default"));
+        assert!(world.registry.category_exists("Camera"));
+    }
+
+    #[test]
+    fn world_has_registry_with_builtin_contexts() {
+        let world = World::new();
+        assert!(world.registry.context_exists("Editor"));
+        assert!(world.registry.context_exists("Runtime"));
+        assert!(world.registry.context_exists("Universal"));
+    }
+
+    #[test]
     fn world_spawn_creates_entity() {
-        // ARRANGE + ACT
         let mut world = World::new();
         let entity = world.spawn();
 
-        // ASSERT — entity exists in the world
         assert_eq!(world.entity_count(), 1);
         assert!(world.contains(entity));
     }
 
     #[test]
+    fn world_spawn_bundle_creates_static_object() {
+        let mut world = World::new();
+        let entity = world.spawn_bundle(StaticObjectBundle::new("Static", Vec3::ZERO));
+
+        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<EntityInfo>(entity).is_ok());
+        assert!(world.get_component::<HierarchyNode>(entity).is_ok());
+        assert!(world.get_component::<Velocity>(entity).is_err());
+    }
+
+    #[test]
+    fn world_spawn_bundle_creates_dynamic_object() {
+        let mut world = World::new();
+        let entity = world.spawn_bundle(DynamicObjectBundle::new(
+            "Dynamic",
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+        ));
+
+        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<EntityInfo>(entity).is_ok());
+        assert!(world.get_component::<HierarchyNode>(entity).is_ok());
+        assert!(world.get_component::<Velocity>(entity).is_ok());
+    }
+
+    #[test]
     fn world_add_component_attaches_to_entity() {
-        // ARRANGE
         let mut world = World::new();
         let entity = world.spawn();
         let transform = Transform::new(Vec3::new(1.0, 2.0, 3.0));
 
-        // ACT
         world.add_component(entity, transform).unwrap();
 
-        // ASSERT — retrieve and verify the component via our own API
         let retrieved = world.get_component::<Transform>(entity).unwrap();
         assert_eq!(retrieved.position, Vec3::new(1.0, 2.0, 3.0));
     }
 
     #[test]
     fn world_remove_component_detaches_from_entity() {
-        // ARRANGE
         let mut world = World::new();
         let entity = world.spawn();
         world.add_component(entity, Transform::default()).unwrap();
 
-        // ACT
         let result = world.remove_component::<Transform>(entity);
 
-        // ASSERT — component was removed successfully
         assert!(result.is_ok());
         assert!(world.get_component::<Transform>(entity).is_err());
     }
 
     #[test]
     fn world_get_component_returns_correct_value() {
-        // ARRANGE
         let mut world = World::new();
         let entity = world.spawn();
         let expected = Vec3::new(4.0, 5.0, 6.0);
@@ -171,42 +218,33 @@ mod tests {
             .add_component(entity, Transform::new(expected))
             .unwrap();
 
-        // ACT
         let transform = world.get_component::<Transform>(entity).unwrap();
 
-        // ASSERT
         assert_eq!(transform.position, expected);
     }
 
     #[test]
     fn world_get_component_mut_allows_modification() {
-        // ARRANGE
         let mut world = World::new();
         let entity = world.spawn();
         world.add_component(entity, Transform::default()).unwrap();
 
-        // ACT — modify the component via mutable reference
         {
             let mut transform = world.get_component_mut::<Transform>(entity).unwrap();
             transform.position = Vec3::new(9.0, 0.0, 0.0);
         }
 
-        // ASSERT — modification persisted
         let transform = world.get_component::<Transform>(entity).unwrap();
         assert_eq!(transform.position, Vec3::new(9.0, 0.0, 0.0));
     }
 
     #[test]
     fn world_despawn_removes_entity() {
-        // ARRANGE
         let mut world = World::new();
         let entity = world.spawn();
-        assert_eq!(world.entity_count(), 1);
 
-        // ACT
         let result = world.despawn(entity);
 
-        // ASSERT
         assert!(result);
         assert_eq!(world.entity_count(), 0);
         assert!(!world.contains(entity));
@@ -214,17 +252,14 @@ mod tests {
 
     #[test]
     fn world_entity_can_have_multiple_components() {
-        // ARRANGE
         let mut world = World::new();
         let entity = world.spawn();
 
-        // ACT — add two components separately
         world.add_component(entity, Transform::default()).unwrap();
         world
             .add_component(entity, Velocity::new(Vec3::new(1.0, 0.0, 0.0)))
             .unwrap();
 
-        // ASSERT — both components are retrievable via our own API
         assert!(world.get_component::<Transform>(entity).is_ok());
         assert!(world.get_component::<Velocity>(entity).is_ok());
     }
