@@ -14,6 +14,11 @@ hecs = "0.11"
 # Used by the renderer too — shared math types across the boundary.
 glam = { version = "0.32", features = ["bytemuck"] }
 
+# uuid — stable unique identifiers for entities
+# v4: random UUID generation
+# js: required for WASM targets
+uuid = { version = "1", features = ["v4", "js"] }
+
 [dev-dependencies]
 # approx — floating point comparison in tests
 # Comparing f32 values with == is unreliable due to floating point
