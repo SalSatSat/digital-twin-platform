@@ -20,15 +20,17 @@ use wasm_bindgen::prelude::*;
 /// # Entity Handles
 ///
 /// hecs Entity IDs use u64 internally, which JavaScript cannot represent
-/// safely. We store entities in a Vec and expose their index as u32 to
-/// JavaScript. JavaScript passes the index back to reference an entity.
+/// safely. We store entities in a Vec<Option<Entity>> and expose their
+/// index as u32 to JavaScript. None slots represent despawned entities
+/// and can be reused by new spawns.
 #[wasm_bindgen]
 pub struct EngineWorld {
     world: World,
     factory: EntityFactory,
     movement_system: MovementSystem,
     /// Stores entity handles indexed by a u32 ID passed to JavaScript.
-    entity_handles: Vec<Entity>,
+    /// None indicates a despawned slot available for reuse.
+    entity_handles: Vec<Option<Entity>>,
 }
 
 #[wasm_bindgen]
@@ -52,9 +54,6 @@ impl EngineWorld {
 
     /// Spawns a dynamic entity at the given position with the given velocity.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
-    ///
-    /// A dynamic entity has both position and velocity — it will move
-    /// each tick when tick() is called.
     pub fn spawn_dynamic_object(
         &mut self,
         x: f32,
@@ -69,21 +68,34 @@ impl EngineWorld {
             Vec3::new(x, y, z),
             Vec3::new(vx, vy, vz),
         );
-        self.entity_handles.push(entity);
-        // Return the index as the JavaScript-facing handle
-        (self.entity_handles.len() - 1) as u32
+        self.allocate_handle(entity)
     }
 
     /// Spawns a static entity at the given position.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
-    ///
-    /// A static entity has position only — it does not move each tick.
     pub fn spawn_static_object(&mut self, x: f32, y: f32, z: f32) -> u32 {
         let entity = self
             .factory
             .create_static_object(&mut self.world, Vec3::new(x, y, z));
-        self.entity_handles.push(entity);
-        (self.entity_handles.len() - 1) as u32
+        self.allocate_handle(entity)
+    }
+
+    /// Despawns an entity by handle, freeing its ECS memory and
+    /// marking its handle slot as available for reuse.
+    ///
+    /// Returns true if the entity existed and was despawned.
+    /// Returns false if the handle is invalid or already despawned.
+    pub fn despawn_entity(&mut self, handle: u32) -> bool {
+        let slot = self.entity_handles.get_mut(handle as usize);
+        match slot {
+            Some(Some(entity)) => {
+                let entity = *entity;
+                self.world.despawn(entity);
+                self.entity_handles[handle as usize] = None;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Advances the world by one tick.
@@ -96,11 +108,12 @@ impl EngineWorld {
     }
 
     /// Returns the position of an entity as a flat [x, y, z] array.
-    ///
-    /// Returns None if the handle is invalid or the entity has no Transform.
-    /// JavaScript receives this as a Float32Array or null.
+    /// Returns None if the handle is invalid, despawned, or has no Transform.
     pub fn get_position(&self, handle: u32) -> Option<Vec<f32>> {
-        let entity = self.entity_handles.get(handle as usize)?;
+        let entity = self
+            .entity_handles
+            .get(handle as usize)
+            .and_then(|slot| slot.as_ref())?;
         let transform = self.world.get_component::<Transform>(*entity).ok()?;
         Some(vec![
             transform.position.x,
@@ -113,5 +126,20 @@ impl EngineWorld {
 impl Default for EngineWorld {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl EngineWorld {
+    /// Finds the first available None slot or pushes a new entry.
+    /// Returns the index as the JavaScript-facing handle.
+    fn allocate_handle(&mut self, entity: Entity) -> u32 {
+        // Reuse a despawned slot if available
+        if let Some(index) = self.entity_handles.iter().position(|s| s.is_none()) {
+            self.entity_handles[index] = Some(entity);
+            return index as u32;
+        }
+        // No free slots — push a new entry
+        self.entity_handles.push(Some(entity));
+        (self.entity_handles.len() - 1) as u32
     }
 }

@@ -1,4 +1,5 @@
-# ── Digital Twin Platform — Makefile ─────────────────────────────────────────
+# =============================================================================
+# Digital Twin Platform -- Makefile
 #
 # This is the single command vocabulary for the entire project.
 # All commands are intended to be run inside the devcontainer.
@@ -7,68 +8,68 @@
 #   make <target>
 #
 # Run `make help` to see all available commands.
+# =============================================================================
 
 # Load toolchain versions from .toolchain-versions
 # The := operator evaluates immediately, not lazily
-# shell command reads the file and exports each line as a variable
 include .toolchain-versions
 export
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# --- Configuration -----------------------------------------------------------
 # These variables define where each part of the project lives.
-# If the structure ever changes, update here — not scattered across targets.
+# If the structure ever changes, update here -- not scattered across targets.
 ENGINE_DIR   := engine
 CLIENT_DIR   := client
 SERVER_DIR   := server
 API_DIR      := server/api
 SYNC_DIR     := server/sync
 
-# ── Help ──────────────────────────────────────────────────────────────────────
-# This target reads comments starting with ##  and prints them as help text.
-# The pattern: add ##  before any target to document it automatically.
+# --- Help --------------------------------------------------------------------
+# This target reads comments starting with ## and prints them as help text.
+# The pattern: add ## before any target to document it automatically.
 .PHONY: help
 help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z_-]+:.*##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-# ── Setup ─────────────────────────────────────────────────────────────────────
+# --- Setup -------------------------------------------------------------------
 .PHONY: setup
-setup: ## First-time setup — install all dependencies
-	@echo "→ Setting up engine dependencies..."
+setup: ## First-time setup -- install all dependencies
+	@echo "-> Setting up engine dependencies..."
 	cd $(ENGINE_DIR) && cargo fetch
-	@echo "→ Setting up client dependencies..."
+	@echo "-> Setting up client dependencies..."
 	pnpm install
-	@echo "→ Setting up server dependencies..."
+	@echo "-> Setting up server dependencies..."
 	cd $(API_DIR) && go mod download
 	cd $(SYNC_DIR) && go mod download
-	@echo "✓ Setup complete. Run 'make dev' to start the full stack."
+	@echo "Done. Run 'make dev' to start the full stack."
 
-# ── Development ───────────────────────────────────────────────────────────────
+# --- Development -------------------------------------------------------------
 .PHONY: dev
 dev: ## Start the full local development stack
-	@echo "→ Starting full development stack..."
+	@echo "-> Starting full development stack..."
 	@$(MAKE) -j4 dev-engine dev-client dev-api dev-sync
 
 .PHONY: dev-engine
 dev-engine: ## Watch and recompile the Rust WASM engine on changes
-	@echo "→ Starting engine watcher..."
+	@echo "-> Starting engine watcher..."
 	cd $(ENGINE_DIR) && cargo watch -i .gitignore -i "*.md" -s "cargo build"
 
 .PHONY: dev-client
 dev-client: ## Start the frontend Vite dev server
-	@echo "→ Starting frontend dev server..."
+	@echo "-> Starting frontend dev server..."
 	cd $(CLIENT_DIR)/app && pnpm dev
 
 .PHONY: dev-api
 dev-api: ## Start the Go API server with hot reload
-	@echo "→ Starting API server..."
+	@echo "-> Starting API server..."
 	cd $(API_DIR) && go run .
 
 .PHONY: dev-sync
 dev-sync: ## Start the Go sync server with hot reload
-	@echo "→ Starting sync server..."
+	@echo "-> Starting sync server..."
 	cd $(SYNC_DIR) && go run .
 
-# ── Build ─────────────────────────────────────────────────────────────────────
+# --- Build -------------------------------------------------------------------
 .PHONY: build
 build: ## Production build of all targets
 	@$(MAKE) build-engine
@@ -77,22 +78,32 @@ build: ## Production build of all targets
 
 .PHONY: build-engine
 build-engine: ## Compile Rust ECS to WASM (production)
-	@echo "→ Building engine..."
-	cd $(ENGINE_DIR) && wasm-pack build --target web
+	@echo "-> Building engine..."
+	cd $(ENGINE_DIR)/wasm && wasm-pack build --target web --out-dir pkg
+	@echo "-> Syncing WASM binary to client..."
+	pnpm install --force
+
+.PHONY: build-wasm
+build-wasm: ## Rebuild WASM and sync binary to client packages (development)
+	@echo "-> Building WASM..."
+	cd $(ENGINE_DIR)/wasm && wasm-pack build --target web --out-dir pkg
+	@echo "-> Syncing WASM binary..."
+	cp $(ENGINE_DIR)/wasm/pkg/dt_engine_wasm_bg.wasm client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm_bg.wasm
+	@echo "Done. Hard refresh the browser."
 
 .PHONY: build-client
 build-client: ## Build the frontend for production
-	@echo "→ Building client..."
+	@echo "-> Building client..."
 	cd $(CLIENT_DIR)/app && pnpm build
 
 .PHONY: build-server
 build-server: ## Build Go binaries for production
-	@echo "→ Building API server..."
+	@echo "-> Building API server..."
 	cd $(API_DIR) && go build -o bin/api .
-	@echo "→ Building sync server..."
+	@echo "-> Building sync server..."
 	cd $(SYNC_DIR) && go build -o bin/sync .
 
-# ── Testing ───────────────────────────────────────────────────────────────────
+# --- Testing -----------------------------------------------------------------
 .PHONY: test
 test: ## Run all tests across the entire project
 	@$(MAKE) test-engine
@@ -101,22 +112,22 @@ test: ## Run all tests across the entire project
 
 .PHONY: test-engine
 test-engine: ## Run Rust engine tests
-	@echo "→ Testing engine..."
+	@echo "-> Testing engine..."
 	cd $(ENGINE_DIR) && cargo test
 
 .PHONY: test-client
 test-client: ## Run frontend tests
-	@echo "→ Testing client..."
+	@echo "-> Testing client..."
 	cd $(CLIENT_DIR)/app && pnpm test
 
 .PHONY: test-server
 test-server: ## Run Go server tests
-	@echo "→ Testing API server..."
+	@echo "-> Testing API server..."
 	cd $(API_DIR) && go test ./...
-	@echo "→ Testing sync server..."
+	@echo "-> Testing sync server..."
 	cd $(SYNC_DIR) && go test ./...
 
-# ── Code quality ──────────────────────────────────────────────────────────────
+# --- Code quality ------------------------------------------------------------
 .PHONY: lint
 lint: ## Run all linters
 	@$(MAKE) lint-engine
@@ -143,13 +154,13 @@ fmt: ## Format all code
 	cd $(API_DIR) && go fmt ./...
 	cd $(SYNC_DIR) && go fmt ./...
 
-# ── Cleanup ───────────────────────────────────────────────────────────────────
+# --- Cleanup -----------------------------------------------------------------
 .PHONY: clean
 clean: ## Remove all build artifacts
-	@echo "→ Cleaning engine artifacts..."
+	@echo "-> Cleaning engine artifacts..."
 	cd $(ENGINE_DIR) && cargo clean
-	@echo "→ Cleaning client artifacts..."
+	@echo "-> Cleaning client artifacts..."
 	rm -rf $(CLIENT_DIR)/app/dist
-	@echo "→ Cleaning server binaries..."
+	@echo "-> Cleaning server binaries..."
 	rm -rf $(API_DIR)/bin $(SYNC_DIR)/bin
-	@echo "✓ Clean complete."
+	@echo "Done."

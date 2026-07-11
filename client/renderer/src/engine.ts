@@ -78,6 +78,16 @@ export class Engine {
   }
 
   /**
+   * Despawns an entity by handle, freeing its ECS memory.
+   * The handle slot becomes available for reuse.
+   * Returns true if the entity existed and was despawned.
+   */
+  despawnEntity(handle: number): boolean {
+    this.assertInitialized();
+    return this.engineWorld!.despawn_entity(handle);
+  }
+
+  /**
    * Releases WASM resources. Call when the Engine is no longer needed.
    */
   dispose(): void {
