@@ -238,12 +238,12 @@ application.
 | Phase 5 | ECS and Renderer ownership split — Engine class introduced | Phase 4 |
 | Phase 6 | WebGPU backend with WebGL fallback — backend abstraction layer | Phase 5 |
 | Phase 7 | Bundle refactor — generic Bundle trait, EntityInfo, HierarchyNode, EntityRegistry with built-in categories (Default, Camera) and contexts (Editor, Runtime, Universal) | Phase 6 |
+| Phase 8 | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system | Phase 7 |
 
 **Upcoming**
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 8 | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system | Phase 7 |
 | Phase 9 | Multiple camera support | Phase 8 |
 | Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting | Phase 9 |
 | Phase 11 | Camera controls — Unity-editor-style navigation | Phase 10 |
