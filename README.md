@@ -82,11 +82,11 @@ Run `make help` inside the devcontainer for the full list.
 
 ### Architecture
 
-The Digital Twin Platform is built as a layered system where a Rust ECS core 
-drives all entity state, compiled to WebAssembly so it runs in the browser. 
-An Engine class owns the WASM runtime and exposes a clean API for ticking 
-the world and reading entity state. A Renderer consumes that state each frame 
-to drive a Three.js scene, and both are mounted and managed by a React 
+The Digital Twin Platform is built as a layered system where a Rust ECS core
+drives all entity state, compiled to WebAssembly so it runs in the browser.
+An Engine class owns the WASM runtime and exposes a clean API for ticking
+the world and reading entity state. A Renderer consumes that state each frame
+to drive a Three.js scene, and both are mounted and managed by a React
 application.
 
 ```
@@ -239,12 +239,12 @@ application.
 | Phase 6 | WebGPU backend with WebGL fallback — backend abstraction layer | Phase 5 |
 | Phase 7 | Bundle refactor — generic Bundle trait, EntityInfo, HierarchyNode, EntityRegistry with built-in categories (Default, Camera) and contexts (Editor, Runtime, Universal) | Phase 6 |
 | Phase 8 | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system | Phase 7 |
+| Phase 9 | Multiple camera support | Phase 8 |
 
 **Upcoming**
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 9 | Multiple camera support | Phase 8 |
 | Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting | Phase 9 |
 | Phase 11 | Camera controls — Unity-editor-style navigation | Phase 10 |
 | Phase 12 | Entity hierarchy — parent/child relationships, editor-facing tree | Phase 8 |
