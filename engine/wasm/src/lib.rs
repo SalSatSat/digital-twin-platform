@@ -1,6 +1,6 @@
 use dt_engine_core::{
-    bundle::{DynamicObjectBundle, StaticObjectBundle},
-    components::Transform,
+    bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
+    components::{CameraComponent, ProjectionType, Transform},
     systems::{MovementSystem, System},
     world::World,
 };
@@ -30,6 +30,9 @@ pub struct EngineWorld {
     /// Stores entity handles indexed by a u32 ID passed to JavaScript.
     /// None indicates a despawned slot available for reuse.
     entity_handles: Vec<Option<Entity>>,
+    /// The handle of the currently active camera.
+    /// None means no camera has been set as active.
+    active_camera_handle: Option<u32>,
 }
 
 #[wasm_bindgen]
@@ -42,6 +45,7 @@ impl EngineWorld {
             world: World::new(),
             movement_system: MovementSystem::new(),
             entity_handles: Vec::new(),
+            active_camera_handle: None,
         }
     }
 
@@ -61,13 +65,11 @@ impl EngineWorld {
         vy: f32,
         vz: f32,
     ) -> u32 {
-        let entity = self
-            .world
-            .spawn_bundle(DynamicObjectBundle::new(
-                "Dynamic Object",
-                Vec3::new(x, y, z),
-                Vec3::new(vx, vy, vz),
-            ));
+        let entity = self.world.spawn_bundle(DynamicObjectBundle::new(
+            "Dynamic Object",
+            Vec3::new(x, y, z),
+            Vec3::new(vx, vy, vz),
+        ));
         self.allocate_handle(entity)
     }
 
@@ -120,6 +122,67 @@ impl EngineWorld {
             transform.position.y,
             transform.position.z,
         ])
+    }
+
+    /// Spawns a perspective camera entity.
+    /// Returns a u32 handle that JavaScript uses to reference this camera.
+    ///
+    /// context should be one of: "Editor", "Runtime", "Universal"
+    pub fn spawn_camera(&mut self, name: &str, x: f32, y: f32, z: f32, context: &str) -> u32 {
+        let entity =
+            self.world
+                .spawn_bundle(CameraBundle::perspective(name, Vec3::new(x, y, z), context));
+        self.allocate_handle(entity)
+    }
+
+    /// Sets the active camera by handle.
+    /// The active camera is used by the renderer as the main viewpoint.
+    pub fn set_active_camera(&mut self, handle: u32) {
+        // Verify the handle is valid before setting it
+        if let Some(Some(_)) = self.entity_handles.get(handle as usize) {
+            self.active_camera_handle = Some(handle);
+        }
+    }
+
+    /// Returns the handle of the currently active camera.
+    /// Returns None if no active camera has been set.
+    pub fn get_active_camera(&self) -> Option<u32> {
+        self.active_camera_handle
+    }
+
+    /// Returns the position and rotation of a camera as a flat array.
+    /// Format: [px, py, pz, rx, ry, rz, rw]
+    /// where p = position, r = rotation quaternion (x, y, z, w)
+    /// Returns None if the handle is invalid or has no Transform.
+    pub fn get_camera_transform(&self, handle: u32) -> Option<Vec<f32>> {
+        let entity = self
+            .entity_handles
+            .get(handle as usize)
+            .and_then(|slot| slot.as_ref())?;
+        let transform = self.world.get_component::<Transform>(*entity).ok()?;
+        Some(vec![
+            transform.position.x,
+            transform.position.y,
+            transform.position.z,
+            transform.rotation.x,
+            transform.rotation.y,
+            transform.rotation.z,
+            transform.rotation.w,
+        ])
+    }
+
+    /// Returns the field of view in degrees for a perspective camera.
+    /// Returns None if the handle is invalid or the camera is not perspective.
+    pub fn get_camera_fov(&self, handle: u32) -> Option<f32> {
+        let entity = self
+            .entity_handles
+            .get(handle as usize)
+            .and_then(|slot| slot.as_ref())?;
+        let camera = self.world.get_component::<CameraComponent>(*entity).ok()?;
+        match camera.projection {
+            ProjectionType::Perspective { fov_degrees, .. } => Some(fov_degrees),
+            _ => None,
+        }
     }
 }
 

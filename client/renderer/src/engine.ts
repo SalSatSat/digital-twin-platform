@@ -88,6 +88,60 @@ export class Engine {
   }
 
   /**
+   * Spawns a perspective camera entity at the given position.
+   * Returns a handle for referencing this camera later.
+   *
+   * context should be one of: "Editor", "Runtime", "Universal"
+   */
+  spawnCamera(
+    name: string,
+    x: number,
+    y: number,
+    z: number,
+    context: string,
+  ): number {
+    this.assertInitialized();
+    return this.engineWorld!.spawn_camera(name, x, y, z, context);
+  }
+
+  /**
+   * Sets the active camera by handle.
+   * The active camera is used by the renderer as the main viewpoint.
+   */
+  setActiveCamera(handle: number): void {
+    this.assertInitialized();
+    this.engineWorld!.set_active_camera(handle);
+  }
+
+  /**
+   * Returns the handle of the currently active camera.
+   * Returns undefined if no active camera has been set.
+   */
+  getActiveCamera(): number | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_active_camera() ?? undefined;
+  }
+
+  /**
+   * Returns the transform of a camera as [px, py, pz, rx, ry, rz, rw].
+   * position (x,y,z) and rotation quaternion (x,y,z,w).
+   * Returns undefined if the handle is invalid.
+   */
+  getCameraTransform(handle: number): Float32Array | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_camera_transform(handle) ?? undefined;
+  }
+
+  /**
+   * Returns the field of view in degrees for a perspective camera.
+   * Returns undefined if the handle is invalid or camera is not perspective.
+   */
+  getCameraFov(handle: number): number | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_camera_fov(handle) ?? undefined;
+  }
+
+  /**
    * Releases WASM resources. Call when the Engine is no longer needed.
    */
   dispose(): void {
