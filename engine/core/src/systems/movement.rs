@@ -41,7 +41,7 @@ impl System for MovementSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::factory::EntityFactory;
+    use crate::bundle::{DynamicObjectBundle, StaticObjectBundle};
     use approx::assert_relative_eq;
     use glam::Vec3;
 
@@ -49,11 +49,13 @@ mod tests {
     fn movement_system_moves_dynamic_entity_each_tick() {
         // ARRANGE
         let mut world = World::new();
-        let factory = EntityFactory::new();
         let mut system = MovementSystem::new();
 
-        let entity =
-            factory.create_dynamic_object(&mut world, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
+        let entity = world.spawn_bundle(DynamicObjectBundle::new(
+            "Dynamic Object",
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+        ));
 
         // ACT — run one tick with a delta_time of 1 second
         system.run(&mut world, 1.0);
@@ -69,11 +71,13 @@ mod tests {
     fn movement_system_respects_delta_time() {
         // ARRANGE
         let mut world = World::new();
-        let factory = EntityFactory::new();
         let mut system = MovementSystem::new();
 
-        let entity =
-            factory.create_dynamic_object(&mut world, Vec3::ZERO, Vec3::new(2.0, 0.0, 0.0));
+        let entity = world.spawn_bundle(DynamicObjectBundle::new(
+            "Dynamic Object",
+            Vec3::ZERO,
+            Vec3::new(2.0, 0.0, 0.0),
+        ));
 
         // ACT — run one tick with a delta_time of 0.5 seconds
         system.run(&mut world, 0.5);
@@ -87,10 +91,12 @@ mod tests {
     fn movement_system_does_not_move_static_entity() {
         // ARRANGE
         let mut world = World::new();
-        let factory = EntityFactory::new();
         let mut system = MovementSystem::new();
 
-        let entity = factory.create_static_object(&mut world, Vec3::new(5.0, 0.0, 0.0));
+        let entity = world.spawn_bundle(StaticObjectBundle::new(
+            "Static Object",
+            Vec3::new(5.0, 0.0, 0.0),
+        ));
 
         // ACT
         system.run(&mut world, 1.0);
@@ -104,13 +110,18 @@ mod tests {
     fn movement_system_moves_multiple_entities_independently() {
         // ARRANGE
         let mut world = World::new();
-        let factory = EntityFactory::new();
         let mut system = MovementSystem::new();
 
-        let entity_a =
-            factory.create_dynamic_object(&mut world, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
-        let entity_b =
-            factory.create_dynamic_object(&mut world, Vec3::ZERO, Vec3::new(0.0, 2.0, 0.0));
+        let entity_a = world.spawn_bundle(DynamicObjectBundle::new(
+            "Entity A",
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+        ));
+        let entity_b = world.spawn_bundle(DynamicObjectBundle::new(
+            "Entity B",
+            Vec3::ZERO,
+            Vec3::new(0.0, 2.0, 0.0),
+        ));
 
         // ACT
         system.run(&mut world, 1.0);
@@ -129,11 +140,13 @@ mod tests {
     fn movement_system_remains_stable_over_many_ticks() {
         // ARRANGE
         let mut world = World::new();
-        let factory = EntityFactory::new();
         let mut system = MovementSystem::new();
 
-        let entity =
-            factory.create_dynamic_object(&mut world, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
+        let entity = world.spawn_bundle(DynamicObjectBundle::new(
+            "Dynamic Object",
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+        ));
 
         // ACT — run 10,000 ticks at 60fps (about 2.75 hours of simulation)
         for _ in 0..10_000 {

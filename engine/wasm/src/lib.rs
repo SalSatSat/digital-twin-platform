@@ -1,6 +1,6 @@
 use dt_engine_core::{
+    bundle::{DynamicObjectBundle, StaticObjectBundle},
     components::Transform,
-    factory::EntityFactory,
     systems::{MovementSystem, System},
     world::World,
 };
@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::*;
 
 /// The main entry point exposed to JavaScript.
 ///
-/// EngineWorld wraps the ECS World, EntityFactory, and MovementSystem
+/// EngineWorld wraps the ECS World and MovementSystem
 /// and exposes a JavaScript-friendly API via wasm-bindgen.
 ///
 /// JavaScript cannot work with Rust types directly. This struct acts
@@ -26,7 +26,6 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct EngineWorld {
     world: World,
-    factory: EntityFactory,
     movement_system: MovementSystem,
     /// Stores entity handles indexed by a u32 ID passed to JavaScript.
     /// None indicates a despawned slot available for reuse.
@@ -41,7 +40,6 @@ impl EngineWorld {
     pub fn new() -> Self {
         Self {
             world: World::new(),
-            factory: EntityFactory::new(),
             movement_system: MovementSystem::new(),
             entity_handles: Vec::new(),
         }
@@ -63,11 +61,13 @@ impl EngineWorld {
         vy: f32,
         vz: f32,
     ) -> u32 {
-        let entity = self.factory.create_dynamic_object(
-            &mut self.world,
-            Vec3::new(x, y, z),
-            Vec3::new(vx, vy, vz),
-        );
+        let entity = self
+            .world
+            .spawn_bundle(DynamicObjectBundle::new(
+                "Dynamic Object",
+                Vec3::new(x, y, z),
+                Vec3::new(vx, vy, vz),
+            ));
         self.allocate_handle(entity)
     }
 
@@ -75,8 +75,8 @@ impl EngineWorld {
     /// Returns a u32 handle that JavaScript uses to reference this entity.
     pub fn spawn_static_object(&mut self, x: f32, y: f32, z: f32) -> u32 {
         let entity = self
-            .factory
-            .create_static_object(&mut self.world, Vec3::new(x, y, z));
+            .world
+            .spawn_bundle(StaticObjectBundle::new("Static Object", Vec3::new(x, y, z)));
         self.allocate_handle(entity)
     }
 
