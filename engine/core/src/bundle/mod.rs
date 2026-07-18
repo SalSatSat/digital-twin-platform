@@ -1,8 +1,10 @@
 pub mod base;
+pub mod camera;
 pub mod dynamic_object;
 pub mod static_object;
 
 pub use base::BaseBundle;
+pub use camera::CameraBundle;
 pub use dynamic_object::DynamicObjectBundle;
 pub use static_object::StaticObjectBundle;
 
