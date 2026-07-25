@@ -241,12 +241,12 @@ application.
 | Phase 8 | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system | Phase 7 |
 | Phase 9 | Multiple camera support | Phase 8 |
 | Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting | Phase 9 |
+| Phase 11 | Camera controls — Free Camera navigation | Phase 10 |
 
 **Upcoming**
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 11 | Camera controls — Free Camera navigation | Phase 10 |
 | Phase 12 | Entity hierarchy — parent/child relationships, editor-facing tree | Phase 8 |
 | Phase 13 | GLB model loading at runtime | Phase 12 |
 | Phase 14 | Event bus — OnEntitySelected and other platform events | Phase 12 |
