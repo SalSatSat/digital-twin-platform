@@ -1,10 +1,12 @@
+// TODO(refactor): split into engine_world.rs and handles.rs
+// when this file exceeds comfortable reading size.
 use dt_engine_core::{
     bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
     components::{CameraComponent, ProjectionType, Transform},
     systems::{MovementSystem, System},
     world::World,
 };
-use glam::Vec3;
+use glam::{Quat, Vec3};
 use hecs::Entity;
 use wasm_bindgen::prelude::*;
 
@@ -182,6 +184,34 @@ impl EngineWorld {
         match camera.projection {
             ProjectionType::Perspective { fov_degrees, .. } => Some(fov_degrees),
             _ => None,
+        }
+    }
+
+    /// Sets the position and rotation of a camera entity.
+    ///
+    /// Used to write camera transform back to the ECS after
+    /// the user moves the camera via controls in the renderer.
+    ///
+    /// position: x, y, z
+    /// rotation: quaternion x, y, z, w
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_camera_transform(
+        &mut self,
+        handle: u32,
+        x: f32,
+        y: f32,
+        z: f32,
+        rx: f32,
+        ry: f32,
+        rz: f32,
+        rw: f32,
+    ) {
+        if let Some(Some(entity)) = self.entity_handles.get(handle as usize) {
+            let entity = *entity;
+            if let Ok(mut transform) = self.world.get_component_mut::<Transform>(entity) {
+                transform.position = Vec3::new(x, y, z);
+                transform.rotation = Quat::from_xyzw(rx, ry, rz, rw);
+            }
         }
     }
 }

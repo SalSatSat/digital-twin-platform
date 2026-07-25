@@ -1,6 +1,7 @@
 import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
 import { SceneDefinition } from "./scene";
+import { CameraControls } from "./camera-controls";
 
 /**
  * Tracks a spawned camera — its ECS handle and Three.js camera.
@@ -36,12 +37,16 @@ export class SceneManager {
   private spawnedEntities: SpawnedEntity[] = [];
   private spawnedLights: THREE.Light[] = [];
   private activeSceneDef: SceneDefinition | null = null;
+  private controls: CameraControls | null = null;
+  private canvas: HTMLCanvasElement | null = null;
 
   constructor(
     private engine: Engine,
     threeScene: THREE.Scene,
+    canvas: HTMLCanvasElement,
   ) {
     this.threeScene = threeScene;
+    this.canvas = canvas;
   }
 
   /**
@@ -143,10 +148,47 @@ export class SceneManager {
   }
 
   /**
+   * Attaches camera controls to the active Scene Camera.
+   * Controls write camera transform back to the ECS each frame.
+   */
+  attachControls(): void {
+    if (!this.canvas) return;
+
+    const sceneCamera = this.spawnedCameras.find((c) => c.isActive);
+    if (!sceneCamera) return;
+
+    this.controls = new CameraControls();
+    this.controls.setCamera(sceneCamera.camera);
+    this.controls.setWriteBack((x, y, z, rx, ry, rz, rw) => {
+      this.engine.setCameraTransform(
+        sceneCamera.handle,
+        x,
+        y,
+        z,
+        rx,
+        ry,
+        rz,
+        rw,
+      );
+    });
+    this.controls.attach(this.canvas);
+  }
+
+  /**
+   * Detaches and disposes camera controls.
+   */
+  detachControls(): void {
+    this.controls?.detach();
+    this.controls = null;
+  }
+
+  /**
    * Unloads the active scene — despawns all entities and cameras,
    * removes all lights.
    */
   unloadScene(): void {
+    this.detachControls();
+
     // Despawn entities
     for (const spawned of this.spawnedEntities) {
       this.engine.despawnEntity(spawned.handle);
@@ -206,7 +248,10 @@ export class SceneManager {
    * Updates all entity mesh positions from the ECS each frame.
    * Handles boundary despawn and respawn for dynamic entities.
    */
-  update(boundaryX: number, spawnX: number): void {
+  update(deltaTime: number, boundaryX: number, spawnX: number): void {
+    // Update camera controls
+    this.controls?.update(deltaTime);
+
     const toRespawn: Array<{
       color: number;
       y: number;

@@ -15,6 +15,7 @@ export class Engine {
   private engineWorld: EngineWorld | null = null;
   private initialized = false;
 
+  // ── Lifecycle ─────────────────────────────────────────────
   /**
    * Loads the WASM module and creates the ECS world.
    * Must be awaited before calling any other method.
@@ -26,32 +27,23 @@ export class Engine {
   }
 
   /**
-   * Advances the ECS by one tick.
-   * delta_time is elapsed time in seconds since the last tick.
+   * Releases WASM resources. Call when the Engine is no longer needed.
    */
-  tick(deltaTime: number): void {
-    this.assertInitialized();
-    this.engineWorld!.tick(deltaTime);
+  dispose(): void {
+    this.engineWorld?.free();
+    this.engineWorld = null;
+    this.initialized = false;
   }
 
-  /**
-   * Returns the position of an entity as [x, y, z].
-   * Returns undefined if the handle is invalid or the entity
-   * has no Transform component.
-   */
-  getPosition(handle: number): Float32Array | undefined {
-    this.assertInitialized();
-    return this.engineWorld!.get_position(handle) ?? undefined;
+  private assertInitialized(): void {
+    if (!this.initialized || !this.engineWorld) {
+      throw new Error(
+        "Engine has not been initialized. Call and await initialize() first.",
+      );
+    }
   }
 
-  /**
-   * Returns the total number of entities in the world.
-   */
-  entityCount(): number {
-    this.assertInitialized();
-    return this.engineWorld!.entity_count();
-  }
-
+  // ── Entities ──────────────────────────────────────────────
   /**
    * Spawns a dynamic entity — has both position and velocity.
    * Returns a handle for referencing this entity later.
@@ -86,6 +78,35 @@ export class Engine {
     this.assertInitialized();
     return this.engineWorld!.despawn_entity(handle);
   }
+
+  /**
+   * Returns the total number of entities in the world.
+   */
+  entityCount(): number {
+    this.assertInitialized();
+    return this.engineWorld!.entity_count();
+  }
+
+  /**
+   * Returns the position of an entity as [x, y, z].
+   * Returns undefined if the handle is invalid or the entity
+   * has no Transform component.
+   */
+  getPosition(handle: number): Float32Array | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_position(handle) ?? undefined;
+  }
+
+  /**
+   * Advances the ECS by one tick.
+   * delta_time is elapsed time in seconds since the last tick.
+   */
+  tick(deltaTime: number): void {
+    this.assertInitialized();
+    this.engineWorld!.tick(deltaTime);
+  }
+
+  // ── Cameras ───────────────────────────────────────────────
 
   /**
    * Spawns a perspective camera entity at the given position.
@@ -142,19 +163,23 @@ export class Engine {
   }
 
   /**
-   * Releases WASM resources. Call when the Engine is no longer needed.
+   * Sets the position and rotation of a camera entity.
+   * Used to write camera transform back to the ECS after
+   * the user moves the camera via controls.
+   *
+   * rotation is a quaternion [rx, ry, rz, rw]
    */
-  dispose(): void {
-    this.engineWorld?.free();
-    this.engineWorld = null;
-    this.initialized = false;
-  }
-
-  private assertInitialized(): void {
-    if (!this.initialized || !this.engineWorld) {
-      throw new Error(
-        "Engine has not been initialized. Call and await initialize() first.",
-      );
-    }
+  setCameraTransform(
+    handle: number,
+    x: number,
+    y: number,
+    z: number,
+    rx: number,
+    ry: number,
+    rz: number,
+    rw: number,
+  ): void {
+    this.assertInitialized();
+    this.engineWorld!.set_camera_transform(handle, x, y, z, rx, ry, rz, rw);
   }
 }

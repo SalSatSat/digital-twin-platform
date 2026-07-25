@@ -51,7 +51,7 @@ export class Renderer {
     );
     this.fallbackCamera.position.z = 10;
 
-    this.sceneManager = new SceneManager(engine, this.threeScene);
+    this.sceneManager = new SceneManager(engine, this.threeScene, canvas);
 
     const hasWebGPU = !!navigator.gpu;
     this.backend = hasWebGPU
@@ -76,11 +76,12 @@ export class Renderer {
   }
 
   /**
-   * Loads the default scene and begins rendering.
+   * Sets up the scene and attaches input controls.
    * Engine must already be initialized before calling this.
    */
   setup(scene: SceneDefinition = DEFAULT_SCENE): void {
     this.sceneManager.loadScene(scene);
+    this.sceneManager.attachControls();
   }
 
   /**
@@ -152,7 +153,7 @@ export class Renderer {
 
     try {
       this.engine.tick(deltaTime);
-      this.sceneManager.update(BOUNDARY_X, SPAWN_X);
+      this.sceneManager.update(deltaTime, BOUNDARY_X, SPAWN_X);
     } catch (e) {
       console.warn("Engine tick error — stopping render loop:", e);
       this.stop();
