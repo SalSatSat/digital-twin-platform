@@ -1,5 +1,12 @@
-// TODO(refactor): split into engine_world.rs and handles.rs
-// when this file exceeds comfortable reading size.
+//! WASM bindings for the Digital Twin Platform engine.
+//!
+//! This crate exposes the ECS core to JavaScript via wasm-bindgen.
+//! [`EngineWorld`] is the single entry point — it wraps the ECS World,
+//! systems, and entity handle management behind a JavaScript-friendly API.
+//!
+//! All types that cross the WASM boundary must be representable in JavaScript.
+//! Rust structs are exposed as JavaScript classes via `#[wasm_bindgen]`.
+//! Complex types like Vec3 and Quat are decomposed into individual f32 values.
 use dt_engine_core::{
     bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
     components::{CameraComponent, ProjectionType, Transform},
