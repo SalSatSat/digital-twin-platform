@@ -15,7 +15,7 @@ type WriteBackFn = (
 ) => void;
 
 /**
- * Unity-editor-style camera controls for the Scene Camera.
+ * Free Camera controls for the Scene Camera.
  *
  * Supported interactions:
  * - Right mouse + drag     — look around (rotate)

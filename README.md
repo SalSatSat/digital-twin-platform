@@ -246,7 +246,7 @@ application.
 
 | Phase | Description | Depends On |
 |---|---|---|
-| Phase 11 | Camera controls — Unity-editor-style navigation | Phase 10 |
+| Phase 11 | Camera controls — Free Camera navigation | Phase 10 |
 | Phase 12 | Entity hierarchy — parent/child relationships, editor-facing tree | Phase 8 |
 | Phase 13 | GLB model loading at runtime | Phase 12 |
 | Phase 14 | Event bus — OnEntitySelected and other platform events | Phase 12 |

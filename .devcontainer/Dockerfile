@@ -132,7 +132,7 @@ RUN curl -sSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-lin
 
 # ── Zone 3: Global development tooling ───────────────────────────────────────
 # cargo-watch watches your Rust source files and re-runs a command when
-# they change. The equivalent of Unity's automatic recompile on save.
+# they change. The equivalent of an automatic recompile-on-save loop.
 # We install this now so it's always available without waiting.
 RUN . $HOME/.cargo/env && cargo install cargo-watch
 
