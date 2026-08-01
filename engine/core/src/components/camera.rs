@@ -52,7 +52,7 @@ impl ProjectionType {
 /// Camera component — defines a viewpoint into the scene.
 ///
 /// Attach this component to any entity that represents a camera.
-/// The entity's Transform defines where the camera is and what
+/// The entity's LocalTransform defines where the camera is and what
 /// direction it is looking.
 ///
 /// Every camera entity should use the Camera category in EntityInfo

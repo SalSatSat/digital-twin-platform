@@ -6,7 +6,7 @@ use hecs::Entity;
 
 /// A dynamic entity — has position and velocity, moves each tick.
 ///
-/// Contains: Transform, EntityInfo, HierarchyNode, Velocity
+/// Contains: LocalTransform, EntityInfo, HierarchyNode, Velocity
 /// Use for anything that moves — vehicles, sensors, animated objects.
 pub struct DynamicObjectBundle {
     pub base: BaseBundle,
@@ -35,7 +35,7 @@ impl Bundle for DynamicObjectBundle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{EntityInfo, HierarchyNode, Transform, Velocity};
+    use crate::components::{EntityInfo, HierarchyNode, LocalTransform, Velocity};
 
     #[test]
     fn dynamic_object_bundle_spawns_with_all_components() {
@@ -45,7 +45,7 @@ mod tests {
 
         let entity = bundle.spawn_into(&mut world);
 
-        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<LocalTransform>(entity).is_ok());
         assert!(world.get_component::<EntityInfo>(entity).is_ok());
         assert!(world.get_component::<HierarchyNode>(entity).is_ok());
         assert!(world.get_component::<Velocity>(entity).is_ok());

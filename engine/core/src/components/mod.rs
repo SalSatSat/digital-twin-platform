@@ -9,4 +9,4 @@ pub use camera::{CameraComponent, ProjectionType};
 pub use hierarchy::HierarchyNode;
 pub use identity::EntityInfo;
 pub use physics::Velocity;
-pub use spatial::Transform;
+pub use spatial::{LocalTransform, WorldTransform};

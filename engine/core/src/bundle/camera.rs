@@ -6,7 +6,7 @@ use hecs::Entity;
 
 /// A camera entity — defines a viewpoint into the scene.
 ///
-/// Contains: Transform, EntityInfo, HierarchyNode, CameraComponent
+/// Contains: LocalTransform, EntityInfo, HierarchyNode, CameraComponent
 ///
 /// The EntityInfo is automatically configured with the Camera category.
 /// The context determines where this camera is active:
@@ -78,7 +78,7 @@ impl Bundle for CameraBundle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{EntityInfo, HierarchyNode, Transform};
+    use crate::components::{EntityInfo, HierarchyNode, LocalTransform};
 
     #[test]
     fn camera_bundle_perspective_spawns_with_all_components() {
@@ -87,7 +87,7 @@ mod tests {
 
         let entity = bundle.spawn_into(&mut world);
 
-        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<LocalTransform>(entity).is_ok());
         assert!(world.get_component::<EntityInfo>(entity).is_ok());
         assert!(world.get_component::<HierarchyNode>(entity).is_ok());
         assert!(world.get_component::<CameraComponent>(entity).is_ok());
@@ -152,7 +152,7 @@ mod tests {
 
         let entity = bundle.spawn_into(&mut world);
 
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert_eq!(transform.position, position);
     }
 }

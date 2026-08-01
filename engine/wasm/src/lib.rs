@@ -9,7 +9,7 @@
 //! Complex types like Vec3 and Quat are decomposed into individual f32 values.
 use dt_engine_core::{
     bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
-    components::{CameraComponent, ProjectionType, Transform},
+    components::{CameraComponent, LocalTransform, ProjectionType},
     systems::{MovementSystem, System},
     world::World,
 };
@@ -119,13 +119,13 @@ impl EngineWorld {
     }
 
     /// Returns the position of an entity as a flat [x, y, z] array.
-    /// Returns None if the handle is invalid, despawned, or has no Transform.
+    /// Returns None if the handle is invalid, despawned, or has no LocalTransform.
     pub fn get_position(&self, handle: u32) -> Option<Vec<f32>> {
         let entity = self
             .entity_handles
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())?;
-        let transform = self.world.get_component::<Transform>(*entity).ok()?;
+        let transform = self.world.get_component::<LocalTransform>(*entity).ok()?;
         Some(vec![
             transform.position.x,
             transform.position.y,
@@ -162,13 +162,13 @@ impl EngineWorld {
     /// Returns the position and rotation of a camera as a flat array.
     /// Format: [px, py, pz, rx, ry, rz, rw]
     /// where p = position, r = rotation quaternion (x, y, z, w)
-    /// Returns None if the handle is invalid or has no Transform.
+    /// Returns None if the handle is invalid or has no LocalTransform.
     pub fn get_camera_transform(&self, handle: u32) -> Option<Vec<f32>> {
         let entity = self
             .entity_handles
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())?;
-        let transform = self.world.get_component::<Transform>(*entity).ok()?;
+        let transform = self.world.get_component::<LocalTransform>(*entity).ok()?;
         Some(vec![
             transform.position.x,
             transform.position.y,
@@ -215,7 +215,7 @@ impl EngineWorld {
     ) {
         if let Some(Some(entity)) = self.entity_handles.get(handle as usize) {
             let entity = *entity;
-            if let Ok(mut transform) = self.world.get_component_mut::<Transform>(entity) {
+            if let Ok(mut transform) = self.world.get_component_mut::<LocalTransform>(entity) {
                 transform.position = Vec3::new(x, y, z);
                 transform.rotation = Quat::from_xyzw(rx, ry, rz, rw);
             }

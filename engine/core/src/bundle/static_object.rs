@@ -5,7 +5,7 @@ use hecs::Entity;
 
 /// A static entity — has position but does not move each tick.
 ///
-/// Contains: Transform, EntityInfo, HierarchyNode
+/// Contains: LocalTransform, EntityInfo, HierarchyNode
 /// Use for anything that occupies space but has no velocity.
 pub struct StaticObjectBundle {
     pub base: BaseBundle,
@@ -30,7 +30,7 @@ impl Bundle for StaticObjectBundle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{EntityInfo, HierarchyNode, Transform, Velocity};
+    use crate::components::{EntityInfo, HierarchyNode, LocalTransform, Velocity};
 
     #[test]
     fn static_object_bundle_spawns_with_base_components() {
@@ -39,7 +39,7 @@ mod tests {
 
         let entity = bundle.spawn_into(&mut world);
 
-        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<LocalTransform>(entity).is_ok());
         assert!(world.get_component::<EntityInfo>(entity).is_ok());
         assert!(world.get_component::<HierarchyNode>(entity).is_ok());
     }
@@ -62,7 +62,7 @@ mod tests {
 
         let entity = bundle.spawn_into(&mut world);
 
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert_eq!(transform.position, position);
     }
 }

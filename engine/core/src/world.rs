@@ -126,7 +126,7 @@ impl Default for World {
 mod tests {
     use super::*;
     use crate::bundle::{DynamicObjectBundle, StaticObjectBundle};
-    use crate::components::{EntityInfo, HierarchyNode, Transform, Velocity};
+    use crate::components::{EntityInfo, HierarchyNode, LocalTransform, Velocity};
     use glam::Vec3;
 
     #[test]
@@ -164,7 +164,7 @@ mod tests {
         let mut world = World::new();
         let entity = world.spawn_bundle(StaticObjectBundle::new("Static", Vec3::ZERO));
 
-        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<LocalTransform>(entity).is_ok());
         assert!(world.get_component::<EntityInfo>(entity).is_ok());
         assert!(world.get_component::<HierarchyNode>(entity).is_ok());
         assert!(world.get_component::<Velocity>(entity).is_err());
@@ -179,7 +179,7 @@ mod tests {
             Vec3::new(1.0, 0.0, 0.0),
         ));
 
-        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<LocalTransform>(entity).is_ok());
         assert!(world.get_component::<EntityInfo>(entity).is_ok());
         assert!(world.get_component::<HierarchyNode>(entity).is_ok());
         assert!(world.get_component::<Velocity>(entity).is_ok());
@@ -189,11 +189,11 @@ mod tests {
     fn world_add_component_attaches_to_entity() {
         let mut world = World::new();
         let entity = world.spawn();
-        let transform = Transform::new(Vec3::new(1.0, 2.0, 3.0));
+        let transform = LocalTransform::new(Vec3::new(1.0, 2.0, 3.0));
 
         world.add_component(entity, transform).unwrap();
 
-        let retrieved = world.get_component::<Transform>(entity).unwrap();
+        let retrieved = world.get_component::<LocalTransform>(entity).unwrap();
         assert_eq!(retrieved.position, Vec3::new(1.0, 2.0, 3.0));
     }
 
@@ -201,12 +201,14 @@ mod tests {
     fn world_remove_component_detaches_from_entity() {
         let mut world = World::new();
         let entity = world.spawn();
-        world.add_component(entity, Transform::default()).unwrap();
+        world
+            .add_component(entity, LocalTransform::default())
+            .unwrap();
 
-        let result = world.remove_component::<Transform>(entity);
+        let result = world.remove_component::<LocalTransform>(entity);
 
         assert!(result.is_ok());
-        assert!(world.get_component::<Transform>(entity).is_err());
+        assert!(world.get_component::<LocalTransform>(entity).is_err());
     }
 
     #[test]
@@ -215,10 +217,10 @@ mod tests {
         let entity = world.spawn();
         let expected = Vec3::new(4.0, 5.0, 6.0);
         world
-            .add_component(entity, Transform::new(expected))
+            .add_component(entity, LocalTransform::new(expected))
             .unwrap();
 
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
 
         assert_eq!(transform.position, expected);
     }
@@ -227,14 +229,16 @@ mod tests {
     fn world_get_component_mut_allows_modification() {
         let mut world = World::new();
         let entity = world.spawn();
-        world.add_component(entity, Transform::default()).unwrap();
+        world
+            .add_component(entity, LocalTransform::default())
+            .unwrap();
 
         {
-            let mut transform = world.get_component_mut::<Transform>(entity).unwrap();
+            let mut transform = world.get_component_mut::<LocalTransform>(entity).unwrap();
             transform.position = Vec3::new(9.0, 0.0, 0.0);
         }
 
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert_eq!(transform.position, Vec3::new(9.0, 0.0, 0.0));
     }
 
@@ -255,12 +259,14 @@ mod tests {
         let mut world = World::new();
         let entity = world.spawn();
 
-        world.add_component(entity, Transform::default()).unwrap();
+        world
+            .add_component(entity, LocalTransform::default())
+            .unwrap();
         world
             .add_component(entity, Velocity::new(Vec3::new(1.0, 0.0, 0.0)))
             .unwrap();
 
-        assert!(world.get_component::<Transform>(entity).is_ok());
+        assert!(world.get_component::<LocalTransform>(entity).is_ok());
         assert!(world.get_component::<Velocity>(entity).is_ok());
     }
 }

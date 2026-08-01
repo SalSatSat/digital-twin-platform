@@ -1,16 +1,16 @@
 use crate::components::physics::Velocity;
-use crate::components::spatial::Transform;
+use crate::components::spatial::LocalTransform;
 use crate::systems::System;
 use crate::world::World;
 
-/// Updates the position of every entity that has both a Transform
+/// Updates the position of every entity that has both a LocalTransform
 /// and a Velocity component.
 ///
 /// Each tick, position is updated as:
 ///   transform.position += velocity.value * delta_time
 ///
-/// Entities with a Transform but no Velocity are not affected.
-/// Entities with a Velocity but no Transform are not affected.
+/// Entities with a LocalTransform but no Velocity are not affected.
+/// Entities with a Velocity but no LocalTransform are not affected.
 pub struct MovementSystem;
 
 impl MovementSystem {
@@ -31,7 +31,10 @@ impl System for MovementSystem {
     }
 
     fn run(&mut self, world: &mut World, delta_time: f32) {
-        for (transform, velocity) in world.inner_mut().query_mut::<(&mut Transform, &Velocity)>() {
+        for (transform, velocity) in world
+            .inner_mut()
+            .query_mut::<(&mut LocalTransform, &Velocity)>()
+        {
             transform.position += velocity.value * delta_time;
         }
     }
@@ -61,7 +64,7 @@ mod tests {
         system.run(&mut world, 1.0);
 
         // ASSERT — entity moved 1 unit along the X axis
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert_relative_eq!(transform.position.x, 1.0);
         assert_relative_eq!(transform.position.y, 0.0);
         assert_relative_eq!(transform.position.z, 0.0);
@@ -83,7 +86,7 @@ mod tests {
         system.run(&mut world, 0.5);
 
         // ASSERT — entity moved 1 unit (2.0 velocity * 0.5 delta_time)
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert_relative_eq!(transform.position.x, 1.0);
     }
 
@@ -102,7 +105,7 @@ mod tests {
         system.run(&mut world, 1.0);
 
         // ASSERT — static entity position is unchanged
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert_relative_eq!(transform.position.x, 5.0);
     }
 
@@ -127,8 +130,14 @@ mod tests {
         system.run(&mut world, 1.0);
 
         // ASSERT — each entity moved according to its own velocity
-        let pos_a = world.get_component::<Transform>(entity_a).unwrap().position;
-        let pos_b = world.get_component::<Transform>(entity_b).unwrap().position;
+        let pos_a = world
+            .get_component::<LocalTransform>(entity_a)
+            .unwrap()
+            .position;
+        let pos_b = world
+            .get_component::<LocalTransform>(entity_b)
+            .unwrap()
+            .position;
 
         assert_relative_eq!(pos_a.x, 1.0);
         assert_relative_eq!(pos_a.y, 0.0);
@@ -154,7 +163,7 @@ mod tests {
         }
 
         // ASSERT — position should be finite and match expected value
-        let transform = world.get_component::<Transform>(entity).unwrap();
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
         assert!(transform.position.x.is_finite());
         assert!(transform.position.y.is_finite());
         assert!(transform.position.z.is_finite());
