@@ -9,7 +9,7 @@
 //! Complex types like Vec3 and Quat are decomposed into individual f32 values.
 use dt_engine_core::{
     bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
-    components::{CameraComponent, LocalTransform, ProjectionType},
+    components::{CameraComponent, HierarchyError, LocalTransform, ProjectionType, WorldTransform},
     systems::{HierarchySystem, MovementSystem, System},
     world::World,
 };
@@ -111,6 +111,51 @@ impl EngineWorld {
         }
     }
 
+    /// Sets `child`'s parent to `parent` by handle.
+    ///
+    /// Returns a status code:
+    ///   0 = success
+    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
+    ///   2 = would create a cycle (child is parent, or an ancestor of parent)
+    ///
+    /// Idempotent: setting a child's parent to its current parent returns 0.
+    pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> u8 {
+        let Some(child) = self.resolve_handle(child_handle) else {
+            return 1;
+        };
+        let Some(parent) = self.resolve_handle(parent_handle) else {
+            return 1;
+        };
+
+        match self.world.set_parent(child, parent) {
+            Ok(()) => 0,
+            Err(HierarchyError::EntityNotFound) => 1,
+            Err(HierarchyError::WouldCreateCycle) => 2,
+        }
+    }
+
+    /// Removes `child`'s parent by handle, making it a root entity.
+    ///
+    /// Returns a status code:
+    ///   0 = success (including if the entity was already a root — no-op)
+    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
+    pub fn remove_parent(&mut self, child_handle: u32) -> u8 {
+        let Some(child) = self.resolve_handle(child_handle) else {
+            return 1;
+        };
+
+        match self.world.remove_parent(child) {
+            Ok(()) => 0,
+            Err(HierarchyError::EntityNotFound) => 1,
+            // remove_parent's Rust API only has one error variant, but match
+            // exhaustively rather than `_ => 1` so this breaks loudly at
+            // compile time if HierarchyError ever grows a new variant.
+            Err(HierarchyError::WouldCreateCycle) => {
+                unreachable!("remove_parent cannot produce WouldCreateCycle")
+            }
+        }
+    }
+
     /// Advances the world by one tick.
     ///
     /// delta_time is the elapsed time in seconds since the last tick.
@@ -122,13 +167,18 @@ impl EngineWorld {
     }
 
     /// Returns the position of an entity as a flat [x, y, z] array.
-    /// Returns None if the handle is invalid, despawned, or has no LocalTransform.
+    /// Returns None if the handle is invalid, despawned, or has no WorldTransform.
+    ///
+    /// Reads WorldTransform, not LocalTransform, so that positions
+    /// reported to the renderer account for parenting — an entity
+    /// attached to a moving/rotated parent reports its absolute
+    /// world-space position, not its position relative to its parent.
     pub fn get_position(&self, handle: u32) -> Option<Vec<f32>> {
         let entity = self
             .entity_handles
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())?;
-        let transform = self.world.get_component::<LocalTransform>(*entity).ok()?;
+        let transform = self.world.get_component::<WorldTransform>(*entity).ok()?;
         Some(vec![
             transform.position.x,
             transform.position.y,
@@ -244,5 +294,15 @@ impl EngineWorld {
         // No free slots — push a new entry
         self.entity_handles.push(Some(entity));
         (self.entity_handles.len() - 1) as u32
+    }
+
+    /// Resolves a JavaScript-facing u32 handle to its underlying Entity.
+    /// Returns None if the handle is out of range or the slot is empty
+    /// (despawned).
+    fn resolve_handle(&self, handle: u32) -> Option<Entity> {
+        self.entity_handles
+            .get(handle as usize)
+            .and_then(|slot| slot.as_ref())
+            .copied()
     }
 }

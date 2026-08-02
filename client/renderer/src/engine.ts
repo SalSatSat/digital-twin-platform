@@ -1,5 +1,17 @@
 import init, { EngineWorld } from "dt-engine-wasm";
 
+// ── Hierarchy ─────────────────────────────────────────────
+
+/**
+ * Result of a set_parent operation. Mirrors the status codes
+ * returned by EngineWorld::set_parent in the WASM boundary.
+ */
+export enum SetParentResult {
+  Success = 0,
+  EntityNotFound = 1,
+  WouldCreateCycle = 2,
+}
+
 /**
  * Owns the WASM-compiled ECS and exposes a clean API for
  * advancing state and reading entity data.
@@ -88,9 +100,9 @@ export class Engine {
   }
 
   /**
-   * Returns the position of an entity as [x, y, z].
+   * Returns the world-space position of an entity as [x, y, z].
    * Returns undefined if the handle is invalid or the entity
-   * has no Transform component.
+   * has no WorldTransform component.
    */
   getPosition(handle: number): Float32Array | undefined {
     this.assertInitialized();
@@ -181,5 +193,31 @@ export class Engine {
   ): void {
     this.assertInitialized();
     this.engineWorld!.set_camera_transform(handle, x, y, z, rx, ry, rz, rw);
+  }
+
+  // ── Hierarchy ─────────────────────────────────────────────
+
+  /**
+   * Sets childHandle's parent to parentHandle.
+   *
+   * Idempotent: setting a child's parent to its current parent
+   * returns SetParentResult.Success without side effects.
+   *
+   * Returns SetParentResult.WouldCreateCycle if parentHandle is
+   * childHandle itself, or a descendant of childHandle — either
+   * case would create an infinite loop in the hierarchy.
+   */
+  setParent(childHandle: number, parentHandle: number): SetParentResult {
+    this.assertInitialized();
+    return this.engineWorld!.set_parent(childHandle, parentHandle);
+  }
+
+  /**
+   * Removes childHandle's parent, making it a root entity.
+   * No-op (returns SetParentResult.Success) if already a root.
+   */
+  removeParent(childHandle: number): SetParentResult {
+    this.assertInitialized();
+    return this.engineWorld!.remove_parent(childHandle);
   }
 }
