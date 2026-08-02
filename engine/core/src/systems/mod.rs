@@ -1,5 +1,7 @@
+pub mod hierarchy;
 pub mod movement;
 
+pub use hierarchy::HierarchySystem;
 pub use movement::MovementSystem;
 
 use crate::world::World;

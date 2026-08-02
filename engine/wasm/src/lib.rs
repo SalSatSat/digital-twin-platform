@@ -10,7 +10,7 @@
 use dt_engine_core::{
     bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
     components::{CameraComponent, LocalTransform, ProjectionType},
-    systems::{MovementSystem, System},
+    systems::{HierarchySystem, MovementSystem, System},
     world::World,
 };
 use glam::{Quat, Vec3};
@@ -36,6 +36,7 @@ use wasm_bindgen::prelude::*;
 pub struct EngineWorld {
     world: World,
     movement_system: MovementSystem,
+    hierarchy_system: HierarchySystem,
     /// Stores entity handles indexed by a u32 ID passed to JavaScript.
     /// None indicates a despawned slot available for reuse.
     entity_handles: Vec<Option<Entity>>,
@@ -53,6 +54,7 @@ impl EngineWorld {
         Self {
             world: World::new(),
             movement_system: MovementSystem::new(),
+            hierarchy_system: HierarchySystem::new(),
             entity_handles: Vec::new(),
             active_camera_handle: None,
         }
@@ -116,6 +118,7 @@ impl EngineWorld {
     /// for frame-rate independent movement.
     pub fn tick(&mut self, delta_time: f32) {
         self.movement_system.run(&mut self.world, delta_time);
+        self.hierarchy_system.run(&mut self.world, delta_time);
     }
 
     /// Returns the position of an entity as a flat [x, y, z] array.

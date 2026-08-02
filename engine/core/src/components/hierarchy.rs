@@ -1,5 +1,20 @@
 use hecs::Entity;
 
+/// Errors that can occur when modifying entity relationships in the
+/// scene hierarchy via `World::set_parent()` or `World::remove_parent()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HierarchyError {
+    /// The child entity, or the target parent entity, does not exist
+    /// in the World (or was despawned).
+    EntityNotFound,
+
+    /// Setting this parent relationship would create a cycle —
+    /// either the entity being parented to itself, or to one of
+    /// its own descendants. Cycles would cause infinite recursion
+    /// in HierarchySystem's depth-first propagation.
+    WouldCreateCycle,
+}
+
 /// Hierarchy component — defines an entity's position in the scene tree.
 ///
 /// Every entity has a HierarchyNode. Entities with no parent are root
