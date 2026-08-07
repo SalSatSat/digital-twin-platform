@@ -31,6 +31,32 @@ pub enum ComponentKind {
     EntityInfo,
 }
 
+impl ComponentKind {
+    /// String encoding used at the WASM boundary — JS can't see the
+    /// Rust enum directly, so component kind travels as a string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ComponentKind::LocalTransform => "LocalTransform",
+            ComponentKind::Camera => "Camera",
+            ComponentKind::Velocity => "Velocity",
+            ComponentKind::EntityInfo => "EntityInfo",
+        }
+    }
+
+    /// Named from_str rather than implementing std::str::FromStr —
+    /// deliberately avoids pulling in the trait (and its Err-type
+    /// requirement) for what's just a fixed lookup table.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "LocalTransform" => Some(Self::LocalTransform),
+            "Camera" => Some(Self::Camera),
+            "Velocity" => Some(Self::Velocity),
+            "EntityInfo" => Some(Self::EntityInfo),
+            _ => None,
+        }
+    }
+}
+
 /// Errors that can occur when reading or writing a component through
 /// the reflection layer.
 #[derive(Debug)]
@@ -108,6 +134,13 @@ pub fn list_components(world: &World, entity: Entity) -> Vec<ComponentKind> {
         .filter(|descriptor| (descriptor.has)(world, entity))
         .map(|descriptor| descriptor.kind)
         .collect()
+}
+
+/// Finds the descriptor for a given kind. Shared by lib.rs's
+/// get_component_json/set_component_json so the lookup logic exists
+/// in exactly one place, rather than each caller re-searching registry().
+pub fn find_descriptor(kind: ComponentKind) -> Option<&'static ComponentDescriptor> {
+    registry().iter().find(|d| d.kind == kind)
 }
 
 // ─── Velocity ───────────────────────────────────────────────────────────

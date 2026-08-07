@@ -18,6 +18,35 @@ use hecs::Entity;
 use wasm_bindgen::prelude::*;
 
 mod reflection;
+use reflection::ComponentKind;
+
+/// Converts a HierarchyError into a JsValue carrying a human-readable
+/// message. The Err side of a Result-returning WASM export becomes a
+/// thrown JS exception with this text — used so set_parent/remove_parent
+/// can surface *why* an operation was rejected, not just that it was.
+fn hierarchy_error_to_js(err: HierarchyError) -> JsValue {
+    let message = match err {
+        HierarchyError::EntityNotFound => "entity not found",
+        HierarchyError::WouldCreateCycle => "would create a cycle in the entity hierarchy",
+    };
+    JsValue::from_str(message)
+}
+
+/// Same idea for ReflectError, used by set_component_json. Unlike
+/// hierarchy_error_to_js, two variants (DeserializationFailed,
+/// ValidationFailed) already carry their own message text — that text
+/// is what the Inspector actually needs to show the user, so it's
+/// passed through rather than replaced with a fixed string.
+fn reflect_error_to_js(err: reflection::ReflectError) -> JsValue {
+    use reflection::ReflectError::*;
+    let message = match err {
+        EntityNotFound => "entity not found".to_string(),
+        ComponentNotPresent => "component not present on entity".to_string(),
+        DeserializationFailed(msg) => format!("invalid value: {msg}"),
+        ValidationFailed(msg) => msg,
+    };
+    JsValue::from_str(&message)
+}
 
 /// The main entry point exposed to JavaScript.
 ///
@@ -46,7 +75,6 @@ pub struct EngineWorld {
     /// None means no camera has been set as active.
     active_camera_handle: Option<u32>,
 }
-
 #[wasm_bindgen]
 impl EngineWorld {
     /// Creates a new empty EngineWorld.
@@ -61,12 +89,10 @@ impl EngineWorld {
             active_camera_handle: None,
         }
     }
-
     /// Returns the number of entities currently in the world.
     pub fn entity_count(&self) -> u32 {
         self.world.entity_count()
     }
-
     /// Spawns a dynamic entity at the given position with the given velocity.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
     pub fn spawn_dynamic_object(
@@ -85,7 +111,6 @@ impl EngineWorld {
         ));
         self.allocate_handle(entity)
     }
-
     /// Spawns a static entity at the given position.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
     pub fn spawn_static_object(&mut self, x: f32, y: f32, z: f32) -> u32 {
@@ -94,7 +119,6 @@ impl EngineWorld {
             .spawn_bundle(StaticObjectBundle::new("Static Object", Vec3::new(x, y, z)));
         self.allocate_handle(entity)
     }
-
     /// Despawns an entity by handle, freeing its ECS memory and
     /// marking its handle slot as available for reuse.
     ///
@@ -112,52 +136,40 @@ impl EngineWorld {
             _ => false,
         }
     }
-
     /// Sets `child`'s parent to `parent` by handle.
     ///
-    /// Returns a status code:
-    ///   0 = success
-    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
-    ///   2 = would create a cycle (child is parent, or an ancestor of parent)
+    /// Idempotent: setting a child's parent to its current parent
+    /// succeeds without side effects.
     ///
-    /// Idempotent: setting a child's parent to its current parent returns 0.
-    pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> u8 {
-        let Some(child) = self.resolve_handle(child_handle) else {
-            return 1;
-        };
-        let Some(parent) = self.resolve_handle(parent_handle) else {
-            return 1;
-        };
-
-        match self.world.set_parent(child, parent) {
-            Ok(()) => 0,
-            Err(HierarchyError::EntityNotFound) => 1,
-            Err(HierarchyError::WouldCreateCycle) => 2,
-        }
+    /// Throws (as a JS exception carrying a message) if either handle
+    /// is invalid, or if the operation would create a cycle (parent is
+    /// child itself, or a descendant of child). Returns Result rather
+    /// than a status code, unlike most other EngineWorld methods —
+    /// see reflect_error_to_js's doc comment for why: the Inspector
+    /// needs the actual reason a mutation was rejected.
+    pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> Result<(), JsValue> {
+        let child = self
+            .resolve_handle(child_handle)
+            .ok_or_else(|| JsValue::from_str("entity not found"))?;
+        let parent = self
+            .resolve_handle(parent_handle)
+            .ok_or_else(|| JsValue::from_str("entity not found"))?;
+        self.world
+            .set_parent(child, parent)
+            .map_err(hierarchy_error_to_js)
     }
-
     /// Removes `child`'s parent by handle, making it a root entity.
     ///
-    /// Returns a status code:
-    ///   0 = success (including if the entity was already a root — no-op)
-    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
-    pub fn remove_parent(&mut self, child_handle: u32) -> u8 {
-        let Some(child) = self.resolve_handle(child_handle) else {
-            return 1;
-        };
-
-        match self.world.remove_parent(child) {
-            Ok(()) => 0,
-            Err(HierarchyError::EntityNotFound) => 1,
-            // remove_parent's Rust API only has one error variant, but match
-            // exhaustively rather than `_ => 1` so this breaks loudly at
-            // compile time if HierarchyError ever grows a new variant.
-            Err(HierarchyError::WouldCreateCycle) => {
-                unreachable!("remove_parent cannot produce WouldCreateCycle")
-            }
-        }
+    /// No-op (succeeds) if the entity was already a root.
+    /// Throws if `child_handle` is invalid.
+    pub fn remove_parent(&mut self, child_handle: u32) -> Result<(), JsValue> {
+        let child = self
+            .resolve_handle(child_handle)
+            .ok_or_else(|| JsValue::from_str("entity not found"))?;
+        self.world
+            .remove_parent(child)
+            .map_err(hierarchy_error_to_js)
     }
-
     /// Advances the world by one tick.
     ///
     /// delta_time is the elapsed time in seconds since the last tick.
@@ -167,7 +179,6 @@ impl EngineWorld {
         self.movement_system.run(&mut self.world, delta_time);
         self.hierarchy_system.run(&mut self.world, delta_time);
     }
-
     /// Returns the position of an entity as a flat [x, y, z] array.
     /// Returns None if the handle is invalid, despawned, or has no WorldTransform.
     ///
@@ -187,7 +198,6 @@ impl EngineWorld {
             transform.position.z,
         ])
     }
-
     /// Spawns a perspective camera entity.
     /// Returns a u32 handle that JavaScript uses to reference this camera.
     ///
@@ -198,7 +208,6 @@ impl EngineWorld {
                 .spawn_bundle(CameraBundle::perspective(name, Vec3::new(x, y, z), context));
         self.allocate_handle(entity)
     }
-
     /// Sets the active camera by handle.
     /// The active camera is used by the renderer as the main viewpoint.
     pub fn set_active_camera(&mut self, handle: u32) {
@@ -207,13 +216,11 @@ impl EngineWorld {
             self.active_camera_handle = Some(handle);
         }
     }
-
     /// Returns the handle of the currently active camera.
     /// Returns None if no active camera has been set.
     pub fn get_active_camera(&self) -> Option<u32> {
         self.active_camera_handle
     }
-
     /// Returns the position and rotation of a camera as a flat array.
     /// Format: [px, py, pz, rx, ry, rz, rw]
     /// where p = position, r = rotation quaternion (x, y, z, w)
@@ -234,7 +241,6 @@ impl EngineWorld {
             transform.rotation.w,
         ])
     }
-
     /// Returns the field of view in degrees for a perspective camera.
     /// Returns None if the handle is invalid or the camera is not perspective.
     pub fn get_camera_fov(&self, handle: u32) -> Option<f32> {
@@ -248,7 +254,6 @@ impl EngineWorld {
             _ => None,
         }
     }
-
     /// Sets the position and rotation of a camera entity.
     ///
     /// Used to write camera transform back to the ECS after
@@ -276,14 +281,67 @@ impl EngineWorld {
             }
         }
     }
-}
 
+    // ── Components (Inspector reflection) ────────────────────────────────
+    // Thin wrappers over the reflection module — this is deliberately
+    // the ONLY place EngineWorld touches reflection::*, keeping the
+    // WASM-boundary translation concern (handle -> Entity, error ->
+    // JsValue) separate from the reflection logic itself.
+
+    /// Returns the reflectable component kinds present on an entity, by
+    /// string name (e.g. "LocalTransform", "Camera"). Empty if the
+    /// handle is invalid or despawned — a query, not a mutation, so it
+    /// follows the existing "invalid handle -> empty result" convention
+    /// rather than throwing.
+    pub fn list_components(&self, handle: u32) -> Vec<String> {
+        let Some(entity) = self.resolve_handle(handle) else {
+            return Vec::new();
+        };
+        reflection::list_components(&self.world, entity)
+            .into_iter()
+            .map(|kind| kind.as_str().to_string())
+            .collect()
+    }
+
+    /// Returns a component's current value as a JSON string, or None if
+    /// the handle is invalid, the kind name is unrecognized, or the
+    /// entity doesn't have that component. Another query — None covers
+    /// all three "nothing to show" cases without distinguishing why.
+    pub fn get_component_json(&self, handle: u32, kind: &str) -> Option<String> {
+        let entity = self.resolve_handle(handle)?;
+        let kind = ComponentKind::from_str(kind)?;
+        let descriptor = reflection::find_descriptor(kind)?;
+        let value = (descriptor.to_json)(&self.world, entity).ok()?;
+        Some(value.to_string())
+    }
+
+    /// Writes a component's value from a JSON string. A mutation that
+    /// can fail for reasons the Inspector should show the user directly
+    /// (invalid JSON shape, near >= far, an unregistered category) — so
+    /// this throws, unlike the two query methods above.
+    pub fn set_component_json(
+        &mut self,
+        handle: u32,
+        kind: &str,
+        json: &str,
+    ) -> Result<(), JsValue> {
+        let entity = self
+            .resolve_handle(handle)
+            .ok_or_else(|| JsValue::from_str("entity not found"))?;
+        let kind = ComponentKind::from_str(kind)
+            .ok_or_else(|| JsValue::from_str("unknown component kind"))?;
+        let descriptor = reflection::find_descriptor(kind)
+            .ok_or_else(|| JsValue::from_str("unknown component kind"))?;
+        let value: serde_json::Value = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("invalid JSON: {e}")))?;
+        (descriptor.from_json)(&mut self.world, entity, value).map_err(reflect_error_to_js)
+    }
+}
 impl Default for EngineWorld {
     fn default() -> Self {
         Self::new()
     }
 }
-
 impl EngineWorld {
     /// Finds the first available None slot or pushes a new entry.
     /// Returns the index as the JavaScript-facing handle.
@@ -297,7 +355,6 @@ impl EngineWorld {
         self.entity_handles.push(Some(entity));
         (self.entity_handles.len() - 1) as u32
     }
-
     /// Resolves a JavaScript-facing u32 handle to its underlying Entity.
     /// Returns None if the handle is out of range or the slot is empty
     /// (despawned).
