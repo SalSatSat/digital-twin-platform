@@ -5,7 +5,7 @@ use uuid::Uuid;
 /// Provides human-readable identification, active state,
 /// visibility state, and classification via category and contexts.
 /// Every entity in the world has exactly one EntityInfo component.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EntityInfo {
     /// Stable unique identifier — survives serialization and networking.
     pub id: Uuid,

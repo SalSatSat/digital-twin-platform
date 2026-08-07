@@ -25,3 +25,7 @@ hecs = "0.11"
 
 # glam — needed to construct Vec3 values at the WASM boundary
 glam = { version = "0.32", features = ["bytemuck"] }
+
+# serde — (de)serialization for the Inspector reflection layer.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

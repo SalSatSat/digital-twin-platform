@@ -17,6 +17,8 @@ use glam::{Quat, Vec3};
 use hecs::Entity;
 use wasm_bindgen::prelude::*;
 
+mod reflection;
+
 /// The main entry point exposed to JavaScript.
 ///
 /// EngineWorld wraps the ECS World and MovementSystem

@@ -7,7 +7,7 @@ use glam::Vec3;
 ///
 /// The direction and magnitude of the vector determine the direction
 /// and speed of movement respectively.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Velocity {
     pub value: Vec3,
 }

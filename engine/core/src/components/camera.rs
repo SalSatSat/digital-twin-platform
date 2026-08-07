@@ -6,7 +6,7 @@
 /// Orthographic projection has no perspective distortion — objects are
 /// the same size regardless of distance. Use this for technical or
 /// isometric views.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ProjectionType {
     /// Perspective projection — natural human vision.
     Perspective {
@@ -57,7 +57,7 @@ impl ProjectionType {
 ///
 /// Every camera entity should use the Camera category in EntityInfo
 /// and an appropriate context (Editor, Runtime, or Universal).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CameraComponent {
     /// The projection type and parameters for this camera.
     pub projection: ProjectionType,

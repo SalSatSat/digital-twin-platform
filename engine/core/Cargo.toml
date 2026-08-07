@@ -12,12 +12,23 @@ hecs = "0.11"
 # glam — fast, WASM-compatible game math
 # Provides Vec3, Quat, Mat4 and other math primitives.
 # Used by the renderer too — shared math types across the boundary.
-glam = { version = "0.32", features = ["bytemuck"] }
+# "serde" added: required to (de)serialize Vec3/Quat for the Inspector
+# reflection layer — LocalTransform and Velocity both round-trip these
+# through JSON at the WASM boundary.
+glam = { version = "0.32", features = ["bytemuck", "serde"] }
 
 # uuid — stable unique identifiers for entities
 # v4: random UUID generation
 # js: required for WASM targets
-uuid = { version = "1", features = ["v4", "js"] }
+# "serde" added: EntityInfo.id needs to serialize for the Inspector
+# (read-only display — see reflection design).
+uuid = { version = "1", features = ["v4", "js", "serde"] }
+
+# serde — (de)serialization for the Inspector reflection layer.
+# derive: #[derive(Serialize, Deserialize)] on reflectable components
+# and their JSON-view types (e.g. LocalTransformView).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 # approx — floating point comparison in tests
