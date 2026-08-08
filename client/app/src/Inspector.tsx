@@ -1,5 +1,11 @@
 import { useState } from "react";
 import type { Engine } from "@dt-platform/renderer";
+import { VelocityField } from "./inspector/VelocityField";
+import type { FieldRendererProps } from "./inspector/FieldRenderer";
+
+const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
+  Velocity: VelocityField,
+};
 
 interface InspectorProps {
   engine: Engine | null;
@@ -70,22 +76,31 @@ export function Inspector({ engine }: InspectorProps) {
       )}
 
       {hasValidHandle &&
-        componentKinds.map((kind) => (
-          <div
-            key={kind}
-            style={{
-              border: "1px solid #3a3a3a",
-              borderRadius: 4,
-              padding: 8,
-              marginBottom: 8,
-            }}
-          >
-            <strong>{kind}</strong>
-            <p style={{ color: "#888", margin: "4px 0 0" }}>
-              (field renderer coming next)
-            </p>
-          </div>
-        ))}
+        componentKinds.map((kind) => {
+          const Renderer = fieldRegistry[kind];
+          return (
+            <div
+              key={kind}
+              style={{
+                border: "1px solid #3a3a3a",
+                borderRadius: 4,
+                padding: 8,
+                marginBottom: 8,
+              }}
+            >
+              {Renderer ? (
+                <Renderer engine={engine} handle={parsedHandle!} />
+              ) : (
+                <>
+                  <strong>{kind}</strong>
+                  <p style={{ color: "#888", margin: "4px 0 0" }}>
+                    (field renderer coming next)
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })}
     </div>
   );
 }
