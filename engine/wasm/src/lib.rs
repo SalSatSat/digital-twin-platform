@@ -20,32 +20,25 @@ use wasm_bindgen::prelude::*;
 mod reflection;
 use reflection::ComponentKind;
 
-/// Converts a HierarchyError into a JsValue carrying a human-readable
-/// message. The Err side of a Result-returning WASM export becomes a
-/// thrown JS exception with this text — used so set_parent/remove_parent
-/// can surface *why* an operation was rejected, not just that it was.
-fn hierarchy_error_to_js(err: HierarchyError) -> JsValue {
-    let message = match err {
-        HierarchyError::EntityNotFound => "entity not found",
-        HierarchyError::WouldCreateCycle => "would create a cycle in the entity hierarchy",
-    };
-    JsValue::from_str(message)
-}
-
-/// Same idea for ReflectError, used by set_component_json. Unlike
-/// hierarchy_error_to_js, two variants (DeserializationFailed,
-/// ValidationFailed) already carry their own message text — that text
-/// is what the Inspector actually needs to show the user, so it's
-/// passed through rather than replaced with a fixed string.
-fn reflect_error_to_js(err: reflection::ReflectError) -> JsValue {
+/// Converts a ReflectError into a human-readable message.
+///
+/// Returned as plain data (Option<String>: None on success, Some(message)
+/// on failure) rather than thrown as a JsValue exception. Both an
+/// unregistered EntityInfo category and an invalid camera near/far pair
+/// are expected, user-triggerable outcomes from editing values in the
+/// Inspector — not exceptional programmer errors — so they're modeled
+/// as return values a caller can branch on, not something that
+/// interrupts control flow. This mirrors the same reasoning already
+/// applied to set_parent/remove_parent's status-code design: expected
+/// domain outcomes are data, not exceptions.
+fn reflect_error_to_message(err: reflection::ReflectError) -> String {
     use reflection::ReflectError::*;
-    let message = match err {
+    match err {
         EntityNotFound => "entity not found".to_string(),
         ComponentNotPresent => "component not present on entity".to_string(),
         DeserializationFailed(msg) => format!("invalid value: {msg}"),
         ValidationFailed(msg) => msg,
-    };
-    JsValue::from_str(&message)
+    }
 }
 
 /// The main entry point exposed to JavaScript.
@@ -138,37 +131,53 @@ impl EngineWorld {
     }
     /// Sets `child`'s parent to `parent` by handle.
     ///
-    /// Idempotent: setting a child's parent to its current parent
-    /// succeeds without side effects.
+    /// Returns a status code:
+    ///   0 = success
+    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
+    ///   2 = would create a cycle (child is parent, or an ancestor of parent)
     ///
-    /// Throws (as a JS exception carrying a message) if either handle
-    /// is invalid, or if the operation would create a cycle (parent is
-    /// child itself, or a descendant of child). Returns Result rather
-    /// than a status code, unlike most other EngineWorld methods —
-    /// see reflect_error_to_js's doc comment for why: the Inspector
-    /// needs the actual reason a mutation was rejected.
-    pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> Result<(), JsValue> {
-        let child = self
-            .resolve_handle(child_handle)
-            .ok_or_else(|| JsValue::from_str("entity not found"))?;
-        let parent = self
-            .resolve_handle(parent_handle)
-            .ok_or_else(|| JsValue::from_str("entity not found"))?;
-        self.world
-            .set_parent(child, parent)
-            .map_err(hierarchy_error_to_js)
+    /// Idempotent: setting a child's parent to its current parent returns 0.
+    ///
+    /// Status code, not a thrown exception: WouldCreateCycle and
+    /// EntityNotFound are both expected, user-triggerable outcomes in
+    /// an interactive editor (a drag-and-drop reparent landing on an
+    /// invalid target is normal usage, not a bug), so they're modeled
+    /// as data the caller branches on rather than control-flow
+    /// interruptions. Also: Result<(), JsValue> was tested here and
+    /// found to break WASM instantiation in this project's toolchain —
+    /// see commit history around Phase 13 for the investigation.
+    pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> u8 {
+        let Some(child) = self.resolve_handle(child_handle) else {
+            return 1;
+        };
+        let Some(parent) = self.resolve_handle(parent_handle) else {
+            return 1;
+        };
+        match self.world.set_parent(child, parent) {
+            Ok(()) => 0,
+            Err(HierarchyError::EntityNotFound) => 1,
+            Err(HierarchyError::WouldCreateCycle) => 2,
+        }
     }
     /// Removes `child`'s parent by handle, making it a root entity.
     ///
-    /// No-op (succeeds) if the entity was already a root.
-    /// Throws if `child_handle` is invalid.
-    pub fn remove_parent(&mut self, child_handle: u32) -> Result<(), JsValue> {
-        let child = self
-            .resolve_handle(child_handle)
-            .ok_or_else(|| JsValue::from_str("entity not found"))?;
-        self.world
-            .remove_parent(child)
-            .map_err(hierarchy_error_to_js)
+    /// Returns a status code:
+    ///   0 = success (including if the entity was already a root — no-op)
+    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
+    pub fn remove_parent(&mut self, child_handle: u32) -> u8 {
+        let Some(child) = self.resolve_handle(child_handle) else {
+            return 1;
+        };
+        match self.world.remove_parent(child) {
+            Ok(()) => 0,
+            Err(HierarchyError::EntityNotFound) => 1,
+            // remove_parent's Rust API only has one error variant, but match
+            // exhaustively rather than `_ => 1` so this breaks loudly at
+            // compile time if HierarchyError ever grows a new variant.
+            Err(HierarchyError::WouldCreateCycle) => {
+                unreachable!("remove_parent cannot produce WouldCreateCycle")
+            }
+        }
     }
     /// Advances the world by one tick.
     ///
@@ -286,13 +295,12 @@ impl EngineWorld {
     // Thin wrappers over the reflection module — this is deliberately
     // the ONLY place EngineWorld touches reflection::*, keeping the
     // WASM-boundary translation concern (handle -> Entity, error ->
-    // JsValue) separate from the reflection logic itself.
+    // message) separate from the reflection logic itself.
 
     /// Returns the reflectable component kinds present on an entity, by
     /// string name (e.g. "LocalTransform", "Camera"). Empty if the
     /// handle is invalid or despawned — a query, not a mutation, so it
-    /// follows the existing "invalid handle -> empty result" convention
-    /// rather than throwing.
+    /// follows the existing "invalid handle -> empty result" convention.
     pub fn list_components(&self, handle: u32) -> Vec<String> {
         let Some(entity) = self.resolve_handle(handle) else {
             return Vec::new();
@@ -302,11 +310,9 @@ impl EngineWorld {
             .map(|kind| kind.as_str().to_string())
             .collect()
     }
-
     /// Returns a component's current value as a JSON string, or None if
     /// the handle is invalid, the kind name is unrecognized, or the
-    /// entity doesn't have that component. Another query — None covers
-    /// all three "nothing to show" cases without distinguishing why.
+    /// entity doesn't have that component.
     pub fn get_component_json(&self, handle: u32, kind: &str) -> Option<String> {
         let entity = self.resolve_handle(handle)?;
         let kind = ComponentKind::from_str(kind)?;
@@ -314,29 +320,38 @@ impl EngineWorld {
         let value = (descriptor.to_json)(&self.world, entity).ok()?;
         Some(value.to_string())
     }
-
-    /// Writes a component's value from a JSON string. A mutation that
-    /// can fail for reasons the Inspector should show the user directly
-    /// (invalid JSON shape, near >= far, an unregistered category) — so
-    /// this throws, unlike the two query methods above.
-    pub fn set_component_json(
-        &mut self,
-        handle: u32,
-        kind: &str,
-        json: &str,
-    ) -> Result<(), JsValue> {
-        let entity = self
-            .resolve_handle(handle)
-            .ok_or_else(|| JsValue::from_str("entity not found"))?;
-        let kind = ComponentKind::from_str(kind)
-            .ok_or_else(|| JsValue::from_str("unknown component kind"))?;
-        let descriptor = reflection::find_descriptor(kind)
-            .ok_or_else(|| JsValue::from_str("unknown component kind"))?;
-        let value: serde_json::Value = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("invalid JSON: {e}")))?;
-        (descriptor.from_json)(&mut self.world, entity, value).map_err(reflect_error_to_js)
+    /// Writes a component's value from a JSON string.
+    ///
+    /// Returns None on success, or Some(message) describing why the
+    /// write was rejected — invalid JSON shape, near >= far, an
+    /// unregistered category. A return value rather than a thrown
+    /// exception: an invalid Inspector edit is an expected, routine
+    /// outcome of a user typing something invalid, not an exceptional
+    /// programmer error, so it's modeled as data the caller can put
+    /// straight into UI state (e.g. an inline validation message)
+    /// without needing try/catch. See reflect_error_to_message's doc
+    /// comment for the same reasoning applied to set_parent/remove_parent.
+    pub fn set_component_json(&mut self, handle: u32, kind: &str, json: &str) -> Option<String> {
+        let Some(entity) = self.resolve_handle(handle) else {
+            return Some("entity not found".to_string());
+        };
+        let Some(kind) = ComponentKind::from_str(kind) else {
+            return Some("unknown component kind".to_string());
+        };
+        let Some(descriptor) = reflection::find_descriptor(kind) else {
+            return Some("unknown component kind".to_string());
+        };
+        let value: serde_json::Value = match serde_json::from_str(json) {
+            Ok(v) => v,
+            Err(e) => return Some(format!("invalid JSON: {e}")),
+        };
+        match (descriptor.from_json)(&mut self.world, entity, value) {
+            Ok(()) => None,
+            Err(e) => Some(reflect_error_to_message(e)),
+        }
     }
 }
+
 impl Default for EngineWorld {
     fn default() -> Self {
         Self::new()

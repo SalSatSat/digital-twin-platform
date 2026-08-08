@@ -87,8 +87,13 @@ build-engine: ## Compile Rust ECS to WASM (production)
 build-wasm: ## Rebuild WASM and sync binary to client packages (development)
 	@echo "-> Building WASM..."
 	cd $(ENGINE_DIR)/wasm && wasm-pack build --target web --out-dir pkg
-	@echo "-> Syncing WASM binary..."
+	@echo "-> Syncing WASM package..."
+	rm -f client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm_bg.wasm
 	cp $(ENGINE_DIR)/wasm/pkg/dt_engine_wasm_bg.wasm client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm_bg.wasm
+	rm -f client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.js
+	cp $(ENGINE_DIR)/wasm/pkg/dt_engine_wasm.js client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.js
+	rm -f client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.d.ts
+	cp $(ENGINE_DIR)/wasm/pkg/dt_engine_wasm.d.ts client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.d.ts
 	@echo "Done. Hard refresh the browser."
 
 .PHONY: build-client
