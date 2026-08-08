@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import { WebGPURenderer } from "three/webgpu";
-import { RenderBackend } from "./backend";
+import type { RenderBackend } from "./backend";
 
 /**
  * WebGPU render backend using Three.js WebGPURenderer.

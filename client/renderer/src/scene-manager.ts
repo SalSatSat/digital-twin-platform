@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
-import { SceneDefinition } from "./scene";
+import type { SceneDefinition } from "./scene";
 import { CameraControls } from "./camera-controls";
 
 /**
@@ -39,12 +39,14 @@ export class SceneManager {
   private activeSceneDef: SceneDefinition | null = null;
   private controls: CameraControls | null = null;
   private canvas: HTMLCanvasElement | null = null;
+  private engine: Engine;
 
   constructor(
-    private engine: Engine,
+    engine: Engine,
     threeScene: THREE.Scene,
     canvas: HTMLCanvasElement,
   ) {
+    this.engine = engine;
     this.threeScene = threeScene;
     this.canvas = canvas;
   }

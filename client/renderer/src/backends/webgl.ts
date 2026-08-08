@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RenderBackend } from "./backend";
+import type { RenderBackend } from "./backend";
 
 /**
  * WebGL render backend using Three.js WebGLRenderer.

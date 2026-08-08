@@ -1,5 +1,3 @@
-import { Engine } from "./engine";
-
 /**
  * Describes a light source in the scene.
  * Lights are Three.js concerns — they don't exist in the ECS.

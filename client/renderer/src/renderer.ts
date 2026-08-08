@@ -1,8 +1,9 @@
 import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
 import { SceneManager } from "./scene-manager";
-import { SceneDefinition, DEFAULT_SCENE } from "./scene";
-import { RenderBackend } from "./backends/backend";
+import { DEFAULT_SCENE } from "./scene";
+import type { SceneDefinition } from "./scene";
+import type { RenderBackend } from "./backends/backend";
 import { WebGLBackend } from "./backends/webgl";
 import { WebGPUBackend } from "./backends/webgpu";
 
@@ -29,6 +30,8 @@ export class Renderer {
   private threeScene: THREE.Scene;
   private backend: RenderBackend;
   private sceneManager: SceneManager;
+  private canvas: HTMLCanvasElement;
+  private engine: Engine;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -36,10 +39,9 @@ export class Renderer {
   private animationFrameId: number | null = null;
   private lastFrameTime: number = 0;
 
-  constructor(
-    private canvas: HTMLCanvasElement,
-    private engine: Engine,
-  ) {
+  constructor(canvas: HTMLCanvasElement, engine: Engine) {
+    this.canvas = canvas;
+    this.engine = engine;
     this.threeScene = new THREE.Scene();
     this.threeScene.background = new THREE.Color(0x1a1a1a);
 
