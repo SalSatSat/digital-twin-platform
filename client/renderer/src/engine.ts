@@ -300,10 +300,31 @@ export class Engine {
    */
   setComponentJson(handle: number, kind: string, json: string): void {
     this.assertInitialized();
-    try {
-      this.engineWorld!.set_component_json(handle, kind, json);
-    } catch (e) {
-      throw new ReflectionError(String(e));
+    const rejection = this.engineWorld!.set_component_json(handle, kind, json);
+    if (rejection !== undefined) {
+      throw new ReflectionError(rejection);
     }
+  }
+
+  /**
+   * Returns all registered entity categories as JSON, for populating
+   * the Inspector's category dropdown. Includes built-ins and any
+   * custom categories added at runtime.
+   *
+   * Callers should JSON.parse() the result — kept as a string here to
+   * mirror getComponentJson's convention.
+   */
+  listCategories(): string {
+    this.assertInitialized();
+    return this.engineWorld!.list_categories();
+  }
+  /**
+   * Returns all registered entity contexts as JSON, for populating
+   * the Inspector's context multi-select. Includes built-ins and any
+   * custom contexts added at runtime.
+   */
+  listContexts(): string {
+    this.assertInitialized();
+    return this.engineWorld!.list_contexts();
   }
 }
