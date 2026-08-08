@@ -1,10 +1,12 @@
 import { useState } from "react";
 import type { Engine } from "@dt-platform/renderer";
-import { VelocityField } from "./inspector/VelocityField";
 import type { FieldRendererProps } from "./inspector/FieldRenderer";
+import { LocalTransformField } from "./inspector/LocalTransformField";
+import { VelocityField } from "./inspector/VelocityField";
 
 const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
   Velocity: VelocityField,
+  LocalTransform: LocalTransformField,
 };
 
 interface InspectorProps {
