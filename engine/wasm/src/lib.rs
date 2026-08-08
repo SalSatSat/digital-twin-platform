@@ -350,6 +350,19 @@ impl EngineWorld {
             Err(e) => Some(reflect_error_to_message(e)),
         }
     }
+    /// Returns all registered entity categories as a JSON array, for
+    /// populating the Inspector's category dropdown. Includes built-ins
+    /// and any custom categories added at runtime.
+    pub fn list_categories(&self) -> String {
+        serde_json::to_string(self.world.registry.categories()).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Returns all registered entity contexts as a JSON array, for
+    /// populating the Inspector's context multi-select. Includes built-ins
+    /// and any custom contexts added at runtime.
+    pub fn list_contexts(&self) -> String {
+        serde_json::to_string(self.world.registry.contexts()).unwrap_or_else(|_| "[]".to_string())
+    }
 }
 
 impl Default for EngineWorld {

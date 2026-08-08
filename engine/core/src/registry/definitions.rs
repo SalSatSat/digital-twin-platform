@@ -1,7 +1,8 @@
+use serde::Serialize;
 use uuid::Uuid;
 
 /// Defines a valid entity category in the registry.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EntityCategoryDef {
     /// Stable unique identifier for this category.
     pub id: Uuid,
@@ -48,7 +49,7 @@ impl EntityCategoryDef {
 }
 
 /// Defines a valid entity context in the registry.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EntityContextDef {
     /// Stable unique identifier for this context.
     pub id: Uuid,
