@@ -1,15 +1,31 @@
 import init, { EngineWorld } from "dt-engine-wasm";
 
-// ── Hierarchy ─────────────────────────────────────────────
+// ── Errors ────────────────────────────────────────────────
+/**
+ * Thrown by hierarchy-mutating methods (setParent, removeParent) when
+ * the operation is rejected by the ECS. Wraps the message thrown across
+ * the WASM boundary — Rust's HierarchyError becomes a JS exception
+ * rather than a status code, since callers (the Inspector) need the
+ * actual reason, not just pass/fail.
+ */
+export class HierarchyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HierarchyError";
+  }
+}
 
 /**
- * Result of a set_parent operation. Mirrors the status codes
- * returned by EngineWorld::set_parent in the WASM boundary.
+ * Thrown by setComponentJson when a write is rejected — bad JSON shape,
+ * or a semantic validation failure (e.g. "near must be less than far",
+ * an unregistered category). The message is meant to be shown to the
+ * user directly in the Inspector, not just logged.
  */
-export enum SetParentResult {
-  Success = 0,
-  EntityNotFound = 1,
-  WouldCreateCycle = 2,
+export class ReflectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReflectionError";
+  }
 }
 
 /**
@@ -119,7 +135,6 @@ export class Engine {
   }
 
   // ── Cameras ───────────────────────────────────────────────
-
   /**
    * Spawns a perspective camera entity at the given position.
    * Returns a handle for referencing this camera later.
@@ -196,28 +211,99 @@ export class Engine {
   }
 
   // ── Hierarchy ─────────────────────────────────────────────
-
   /**
    * Sets childHandle's parent to parentHandle.
    *
-   * Idempotent: setting a child's parent to its current parent
-   * returns SetParentResult.Success without side effects.
+   * Idempotent: setting a child's parent to its current parent is a
+   * no-op that succeeds without side effects.
    *
-   * Returns SetParentResult.WouldCreateCycle if parentHandle is
-   * childHandle itself, or a descendant of childHandle — either
-   * case would create an infinite loop in the hierarchy.
+   * Throws HierarchyError if either handle is invalid, or if the
+   * operation would create a cycle (parentHandle is childHandle
+   * itself, or a descendant of childHandle).
    */
-  setParent(childHandle: number, parentHandle: number): SetParentResult {
+  setParent(childHandle: number, parentHandle: number): void {
     this.assertInitialized();
-    return this.engineWorld!.set_parent(childHandle, parentHandle);
+    const status = this.engineWorld!.set_parent(childHandle, parentHandle);
+    switch (status) {
+      case 0:
+        return;
+      case 1:
+        throw new HierarchyError(
+          `setParent failed: entity not found (child=${childHandle}, parent=${parentHandle})`,
+        );
+      case 2:
+        throw new HierarchyError(
+          `setParent failed: would create a cycle (child=${childHandle}, parent=${parentHandle})`,
+        );
+      default:
+        throw new HierarchyError(
+          `setParent failed: unknown status code ${status}`,
+        );
+    }
   }
 
   /**
    * Removes childHandle's parent, making it a root entity.
-   * No-op (returns SetParentResult.Success) if already a root.
+   * No-op if already a root.
+   *
+   * Throws HierarchyError if childHandle is invalid.
    */
-  removeParent(childHandle: number): SetParentResult {
+  removeParent(childHandle: number): void {
     this.assertInitialized();
-    return this.engineWorld!.remove_parent(childHandle);
+    const status = this.engineWorld!.remove_parent(childHandle);
+    switch (status) {
+      case 0:
+        return;
+      case 1:
+        throw new HierarchyError(
+          `removeParent failed: entity not found (child=${childHandle})`,
+        );
+      default:
+        throw new HierarchyError(
+          `removeParent failed: unknown status code ${status}`,
+        );
+    }
+  }
+
+  // ── Components (Inspector reflection) ────────────────────
+  /**
+   * Returns the reflectable component kinds present on an entity,
+   * as string names (e.g. "LocalTransform", "Camera"). Empty array
+   * if the handle is invalid or despawned.
+   */
+  listComponents(handle: number): string[] {
+    this.assertInitialized();
+    return this.engineWorld!.list_components(handle);
+  }
+
+  /**
+   * Returns a component's current value as a JSON string, or
+   * undefined if the handle is invalid, kind is unrecognized, or
+   * the entity doesn't have that component.
+   *
+   * Callers should JSON.parse() the result — kept as a string here
+   * rather than parsed, since the shape varies per component kind
+   * and this layer doesn't know about that shape.
+   */
+  getComponentJson(handle: number, kind: string): string | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_component_json(handle, kind) ?? undefined;
+  }
+
+  /**
+   * Writes a component's value from a JSON string.
+   *
+   * Throws ReflectionError if the JSON is malformed, the entity/kind
+   * is invalid, or the value fails validation (e.g. camera near >= far,
+   * an unregistered EntityInfo category). The error message is meant
+   * to be shown directly to the user.
+   */
+  setComponentJson(handle: number, kind: string, json: string): void {
+    this.assertInitialized();
+    try {
+      this.engineWorld!.set_component_json(handle, kind, json);
+    } catch (e) {
+      throw new ReflectionError(String(e));
+    }
   }
 }
