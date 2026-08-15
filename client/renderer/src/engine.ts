@@ -29,6 +29,18 @@ export class ReflectionError extends Error {
 }
 
 /**
+ * One entry in the flat list returned by listEntityHierarchy — a
+ * single entity in the scene hierarchy. parent_handle is null for
+ * root entities. Field names match the wire JSON exactly (snake_case),
+ * consistent with LocalTransformView's rotation_euler_deg convention.
+ */
+export interface EntityHierarchyNode {
+  handle: number;
+  parent_handle: number | null;
+  name: string;
+}
+
+/**
  * Owns the WASM-compiled ECS and exposes a clean API for
  * advancing state and reading entity data.
  *
@@ -77,6 +89,7 @@ export class Engine {
    * Returns a handle for referencing this entity later.
    */
   spawnDynamicObject(
+    name: string,
     x: number,
     y: number,
     z: number,
@@ -85,16 +98,16 @@ export class Engine {
     vz: number,
   ): number {
     this.assertInitialized();
-    return this.engineWorld!.spawn_dynamic_object(x, y, z, vx, vy, vz);
+    return this.engineWorld!.spawn_dynamic_object(name, x, y, z, vx, vy, vz);
   }
 
   /**
    * Spawns a static entity — has position only, does not move.
    * Returns a handle for referencing this entity later.
    */
-  spawnStaticObject(x: number, y: number, z: number): number {
+  spawnStaticObject(name: string, x: number, y: number, z: number): number {
     this.assertInitialized();
-    return this.engineWorld!.spawn_static_object(x, y, z);
+    return this.engineWorld!.spawn_static_object(name, x, y, z);
   }
 
   /**
@@ -263,6 +276,21 @@ export class Engine {
           `removeParent failed: unknown status code ${status}`,
         );
     }
+  }
+
+  /**
+   * Returns every live entity as a flat list, JSON-encoded, for the
+   * Entity Hierarchy panel to reconstruct into a tree client-side.
+   * Each entry carries parent_handle rather than children — building
+   * the tree structure is the panel's concern, not this layer's.
+   *
+   * Callers should JSON.parse() the result as EntityHierarchyNode[] —
+   * kept as a string here to mirror listCategories/listContexts's
+   * convention.
+   */
+  listEntityHierarchy(): string {
+    this.assertInitialized();
+    return this.engineWorld!.list_entity_hierarchy();
   }
 
   // ── Components (Inspector reflection) ────────────────────

@@ -1,4 +1,5 @@
 export { Engine, HierarchyError, ReflectionError } from "./engine";
+export type { EntityHierarchyNode } from "./engine";
 export { Renderer } from "./renderer";
 export { SceneManager } from "./scene-manager";
 export { CameraControls } from "./camera-controls";
