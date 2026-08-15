@@ -155,7 +155,7 @@ fn velocity_to_json(world: &World, entity: Entity) -> Result<serde_json::Value, 
     let velocity = world
         .get_component::<Velocity>(entity)
         .map_err(|_| ReflectError::ComponentNotPresent)?;
-    serde_json::to_value(&*velocity).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+    serde_json::to_value(*velocity).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
 }
 
 fn velocity_from_json(
@@ -255,7 +255,7 @@ fn camera_to_json(world: &World, entity: Entity) -> Result<serde_json::Value, Re
     let camera = world
         .get_component::<CameraComponent>(entity)
         .map_err(|_| ReflectError::ComponentNotPresent)?;
-    serde_json::to_value(&*camera).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+    serde_json::to_value(*camera).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
 }
 
 /// Checks near < far for whichever projection variant is active.
