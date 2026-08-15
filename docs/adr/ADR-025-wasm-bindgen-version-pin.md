@@ -1,11 +1,12 @@
 # ADR-025: Pin wasm-bindgen to 0.2.125 (not 0.2.100)
 
 ## Status
-
 Accepted
 
-## Context
+## Date
+2026-08-08
 
+## Context
 During Phase 13 (Runtime Editor) development, the browser began failing to
 instantiate the compiled WASM module with:
 
@@ -68,7 +69,6 @@ here so they aren't mistaken for part of the root cause on a future read:
    removed symbol, and resolved with `cargo clean -p dt-engine-wasm`.
 
 ## Decision
-
 Pin `wasm-bindgen = "=0.2.125"` in `engine/wasm/Cargo.toml`.
 
 Confirmed working range for this project, as of this investigation:
@@ -76,7 +76,6 @@ Confirmed working range for this project, as of this investigation:
 reintroduced without a documented, browser-verified reason.
 
 ## Consequences
-
 - The reflection layer (`reflection.rs`) and all `EngineWorld` methods
   work correctly in the browser on `0.2.125`.
 - Any future `wasm-bindgen` version change (whether pinning to a specific
@@ -96,7 +95,6 @@ reintroduced without a documented, browser-verified reason.
   smoke test.
 
 ## Alternatives Considered
-
 - **Leave `wasm-bindgen` unpinned (`"0.2"` or similar range)**, as it was
   before Phase 13. This would have avoided the specific regression here,
   but an unpinned range can still drift to a new version that introduces
@@ -110,7 +108,6 @@ reintroduced without a documented, browser-verified reason.
   bisection.
 
 ## Should this remain unchanged?
-
 Yes. `0.2.125` should be treated as the current known-good pin. Do not
 change it without repeating the full verification sequence described
 above in the same session as the change.
