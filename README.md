@@ -3,6 +3,7 @@
 A real-time simulation and visualization platform for city-scale digital twin experiences. Built with a Rust ECS core compiled to WebAssembly, a Three.js + WebGPU renderer, and Go backend services.
 
 Features:
+
 - Real-time city-scale simulation via a Rust ECS engine compiled to WebAssembly
 - WebGPU-first rendering with automatic WebGL fallback
 - Plugin-based architecture for extensible simulation and visualization
@@ -11,14 +12,16 @@ Features:
 
 ### Screenshots
 
-*Coming soon*
+_Coming soon_
 
 ### Requirements
 
 Hardware:
+
 - WebGPU-capable GPU recommended (WebGL fallback supported)
 
 Software:
+
 - [Docker Engine](https://docs.docker.com/engine/install/) (WSL2 backend, no Docker Desktop required)
 - [VSCode](https://code.visualstudio.com/) with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension
 - WSL2 with Ubuntu 22.04 or later
@@ -28,6 +31,7 @@ Software:
 ### Setup
 
 1. Clone the repository inside your WSL2 filesystem:
+
 ```bash
    cd ~/projects
    git clone <repo-url> digital-twin-platform
@@ -35,29 +39,35 @@ Software:
 ```
 
 2. Load toolchain versions into your shell (add this to your `~/.bashrc` to make it permanent):
+
 ```bash
    export $(cat .toolchain-versions | xargs)
 ```
 
 3. Copy the environment file and configure as needed:
+
 ```bash
    cp .env.example .env
 ```
 
 4. Open the project in VSCode:
+
 ```bash
    code .
 ```
 
 5. When prompted, click **Reopen in Container**
+
    > First build takes several minutes — all toolchains are being installed and cached. Subsequent opens use the cached image and are fast.
 
 6. Once inside the devcontainer, run first-time setup:
+
 ```bash
    make setup
 ```
 
 7. Start the full development stack:
+
 ```bash
    make dev
 ```
@@ -66,19 +76,20 @@ Software:
 
 Run `make help` inside the devcontainer for the full list.
 
-| Command | Description |
-|---|---|
-| `make setup` | First-time dependency installation |
-| `make dev` | Start the full development stack |
-| `make dev-engine` | Watch and recompile the Rust WASM engine only |
-| `make dev-client` | Start the frontend Vite dev server only |
-| `make dev-api` | Start the Go API server only |
-| `make dev-sync` | Start the Go sync server only |
-| `make build` | Production build of all targets |
-| `make test` | Run all tests across the project |
-| `make lint` | Run all linters |
-| `make fmt` | Format all code |
-| `make clean` | Remove all build artifacts |
+| Command                 | Description                                   |
+| ----------------------- | --------------------------------------------- |
+| `make setup`            | First-time dependency installation            |
+| `make dev`              | Start the full development stack              |
+| `make dev-engine`       | Watch and recompile the Rust WASM engine only |
+| `make dev-client`       | Start the frontend Vite dev server only       |
+| `make dev-api`          | Start the Go API server only                  |
+| `make dev-sync`         | Start the Go sync server only                 |
+| `make build`            | Production build of all targets               |
+| `make test`             | Run all tests across the project              |
+| `make lint`             | Run all linters and type checks               |
+| `make typecheck-client` | Type-check the frontend                       |
+| `make fmt`              | Format all code                               |
+| `make clean`            | Remove all build artifacts                    |
 
 ### Architecture
 
@@ -154,32 +165,32 @@ application.
 
 **Team Ownership**
 
-| Directory | Owner | Responsibility |
-|---|---|---|
-| `engine/core` | Engine team | Rust ECS runtime |
-| `engine/wasm` | Engine team | WASM bindings |
+| Directory         | Owner       | Responsibility             |
+| ----------------- | ----------- | -------------------------- |
+| `engine/core`     | Engine team | Rust ECS runtime           |
+| `engine/wasm`     | Engine team | WASM bindings              |
 | `client/renderer` | Engine team | Three.js + WebGPU renderer |
-| `client/app` | Web team | React frontend shell |
-| `server/api` | Web team | Go REST API |
-| `server/sync` | Web team | Go realtime sync |
-| `shared/` | Both teams | Cross-team data contracts |
+| `client/app`      | Web team    | React frontend shell       |
+| `server/api`      | Web team    | Go REST API                |
+| `server/sync`     | Web team    | Go realtime sync           |
+| `shared/`         | Both teams  | Cross-team data contracts  |
 
 ## Technology Stack
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| ECS Engine | Rust 1.95 + hecs 0.11 | Entity-component-system runtime |
-| Math | glam 0.32 | Vec3, Quat, Mat4 primitives |
-| WASM Bridge | wasm-bindgen + wasm-pack | Rust → JavaScript interop |
-| Renderer | Three.js 0.177 | 3D scene, WebGL/WebGPU |
-| Frontend | React 19 + TypeScript | Application shell |
-| Build Tool | Vite 8 | Frontend dev server + bundler |
-| Package Manager | pnpm 11 | Monorepo workspace management |
-| API Server | Go 1.26 | REST API (future) |
-| Sync Server | Go 1.26 + WebSocket | Realtime state sync (future) |
-| Database | PostgreSQL 17 | Persistent storage (future) |
-| Realtime Cache | Redis 7 | Ephemeral state (future) |
-| Dev Environment | Docker + devcontainer | Reproducible toolchain |
+| Layer           | Technology               | Purpose                         |
+| --------------- | ------------------------ | ------------------------------- |
+| ECS Engine      | Rust 1.95 + hecs 0.11    | Entity-component-system runtime |
+| Math            | glam 0.32                | Vec3, Quat, Mat4 primitives     |
+| WASM Bridge     | wasm-bindgen + wasm-pack | Rust → JavaScript interop       |
+| Renderer        | Three.js 0.177           | 3D scene, WebGL/WebGPU          |
+| Frontend        | React 19 + TypeScript    | Application shell               |
+| Build Tool      | Vite 8                   | Frontend dev server + bundler   |
+| Package Manager | pnpm 11                  | Monorepo workspace management   |
+| API Server      | Go 1.26                  | REST API (future)               |
+| Sync Server     | Go 1.26 + WebSocket      | Realtime state sync (future)    |
+| Database        | PostgreSQL 17            | Persistent storage (future)     |
+| Realtime Cache  | Redis 7                  | Ephemeral state (future)        |
+| Dev Environment | Docker + devcontainer    | Reproducible toolchain          |
 
 ### Team
 
@@ -211,53 +222,53 @@ application.
 
 ### License
 
-*To be determined*
+_To be determined_
 
 ### Third Party Licenses
 
-| Library | License |
-|---|---|
-| [Rust](https://www.rust-lang.org/) | MIT / Apache 2.0 |
-| [wasm-pack](https://rustwasm.github.io/wasm-pack/) | MIT / Apache 2.0 |
-| [Three.js](https://threejs.org/) | MIT |
-| [React](https://react.dev/) | MIT |
-| [Go](https://go.dev/) | BSD 3-Clause |
-| [PostgreSQL](https://www.postgresql.org/) | PostgreSQL License |
-| [Redis](https://redis.io/) | RSALv2 / SSPLv1 |
+| Library                                            | License            |
+| -------------------------------------------------- | ------------------ |
+| [Rust](https://www.rust-lang.org/)                 | MIT / Apache 2.0   |
+| [wasm-pack](https://rustwasm.github.io/wasm-pack/) | MIT / Apache 2.0   |
+| [Three.js](https://threejs.org/)                   | MIT                |
+| [React](https://react.dev/)                        | MIT                |
+| [Go](https://go.dev/)                              | BSD 3-Clause       |
+| [PostgreSQL](https://www.postgresql.org/)          | PostgreSQL License |
+| [Redis](https://redis.io/)                         | RSALv2 / SSPLv1    |
 
 ### Roadmap
 
 **Completed**
 
-| Phase | Description | Depends On |
-|---|---|---|
-| Phase 1 | Project scaffold, devcontainer, Makefile, Docker Compose | — |
-| Phase 2 | Rust ECS core — World, Components, Systems, EntityFactory | Phase 1 |
-| Phase 3 | WASM boundary — EngineWorld, wasm-bindgen, browser verified | Phase 2 |
-| Phase 4 | First render — Three.js, React, entity driven by Rust ECS | Phase 3 |
-| Phase 5 | ECS and Renderer ownership split — Engine class introduced | Phase 4 |
-| Phase 6 | WebGPU backend with WebGL fallback — backend abstraction layer | Phase 5 |
-| Phase 7 | Bundle refactor — generic Bundle trait, EntityInfo, HierarchyNode, EntityRegistry with built-in categories (Default, Camera) and contexts (Editor, Runtime, Universal) | Phase 6 |
-| Phase 8 | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system | Phase 7 |
-| Phase 9 | Multiple camera support | Phase 8 |
-| Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting | Phase 9 |
-| Phase 11 | Camera controls — Free Camera navigation | Phase 10 |
-| Phase 12 | Entity hierarchy — LocalTransform/WorldTransform propagation, parent/child relationships via `set_parent`/`remove_parent` | Phase 8 |
+| Phase    | Description                                                                                                                                                            | Depends On |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Phase 1  | Project scaffold, devcontainer, Makefile, Docker Compose                                                                                                               | —          |
+| Phase 2  | Rust ECS core — World, Components, Systems, EntityFactory                                                                                                              | Phase 1    |
+| Phase 3  | WASM boundary — EngineWorld, wasm-bindgen, browser verified                                                                                                            | Phase 2    |
+| Phase 4  | First render — Three.js, React, entity driven by Rust ECS                                                                                                              | Phase 3    |
+| Phase 5  | ECS and Renderer ownership split — Engine class introduced                                                                                                             | Phase 4    |
+| Phase 6  | WebGPU backend with WebGL fallback — backend abstraction layer                                                                                                         | Phase 5    |
+| Phase 7  | Bundle refactor — generic Bundle trait, EntityInfo, HierarchyNode, EntityRegistry with built-in categories (Default, Camera) and contexts (Editor, Runtime, Universal) | Phase 6    |
+| Phase 8  | Multiple entities — proper entity lifecycle, despawn, hierarchy traversal system                                                                                       | Phase 7    |
+| Phase 9  | Multiple camera support                                                                                                                                                | Phase 8    |
+| Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting                                                                                                                   | Phase 9    |
+| Phase 11 | Camera controls — Free Camera navigation                                                                                                                               | Phase 10   |
+| Phase 12 | Entity hierarchy — LocalTransform/WorldTransform propagation, parent/child relationships via `set_parent`/`remove_parent`                                              | Phase 8    |
 
 **Upcoming**
 
-| Phase | Description | Depends On |
-|---|---|---|
-| Phase 13 | Runtime Editor — UI shell, Hierarchy panel, generic Inspector, registry validation | Phase 12 |
-| Phase 14 | Event Bus — `OnEntitySelected` and other platform events | Phase 13 |
-| Phase 15 | GLB model loading at runtime | Phase 14 |
-| Phase 16 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 20) | Phase 13 |
-| Phase 17 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton | Phase 15 |
-| Phase 18 | Auth & Users — user table, password/session handling, login/logout | Phase 17 |
-| Phase 19 | Organizations & Projects — organization concept, projects owned by an organization | Phase 18 |
-| Phase 20 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 16's debug metrics | Phase 19 |
-| Phase 21 | Scene Persistence — save/load `SceneDefinition` against a project | Phase 19 |
-| Phase 22 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 21 |
+| Phase    | Description                                                                                                                            | Depends On |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Phase 13 | Runtime Editor — UI shell, Hierarchy panel, generic Inspector, registry validation                                                     | Phase 12   |
+| Phase 14 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 13   |
+| Phase 15 | GLB model loading at runtime                                                                                                           | Phase 14   |
+| Phase 16 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 20)                                            | Phase 13   |
+| Phase 17 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 15   |
+| Phase 18 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 17   |
+| Phase 19 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 18   |
+| Phase 20 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 16's debug metrics                   | Phase 19   |
+| Phase 21 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 19   |
+| Phase 22 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 21   |
 
 **Not yet scheduled**
 
