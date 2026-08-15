@@ -134,9 +134,10 @@ test-server: ## Run Go server tests
 
 # --- Code quality ------------------------------------------------------------
 .PHONY: lint
-lint: ## Run all linters
+lint: ## Run all linters and type checks
 	@$(MAKE) lint-engine
 	@$(MAKE) lint-client
+	@$(MAKE) typecheck-client
 	@$(MAKE) lint-server
 
 .PHONY: lint-engine
@@ -146,6 +147,10 @@ lint-engine: ## Lint Rust code with clippy
 .PHONY: lint-client
 lint-client: ## Lint frontend TypeScript code
 	cd $(CLIENT_DIR)/app && pnpm lint
+.PHONY: typecheck-client
+typecheck-client: ## Type-check the frontend (deletes stale .tsbuildinfo first -- see ADR-025)
+	@echo "-> Type-checking client..."
+	cd $(CLIENT_DIR)/app && find . -name "*.tsbuildinfo" -delete && npx tsc --build --noEmit
 
 .PHONY: lint-server
 lint-server: ## Lint Go code
