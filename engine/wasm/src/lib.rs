@@ -100,6 +100,10 @@ impl EngineWorld {
     }
     /// Spawns a dynamic entity at the given position with the given velocity.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
+    // 8 args is inherent to this constructor's shape (name + position + velocity);
+    // grouping into a params struct would need a matching TS-side signature change
+    // across all call sites -- not worth it for a spawn function, not general logic.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_dynamic_object(
         &mut self,
         name: &str,
