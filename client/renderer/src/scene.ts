@@ -131,5 +131,11 @@ export const DEFAULT_SCENE: SceneDefinition = {
     },
   ],
 
-  staticEntities: [],
+  staticEntities: [
+    {
+      name: "Cube D",
+      position: { x: -3.0, y: 3.0, z: 0.0 },
+      color: 0xffffff,
+    },
+  ],
 };
