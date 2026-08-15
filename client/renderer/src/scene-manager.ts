@@ -17,6 +17,7 @@ interface SpawnedCamera {
  */
 interface SpawnedEntity {
   handle: number;
+  name: string;
   mesh: THREE.Mesh;
 }
 
@@ -111,7 +112,9 @@ export class SceneManager {
 
     // Spawn dynamic entities
     for (const entityDef of definition.dynamicEntities) {
+      const name = entityDef.name;
       const handle = this.engine.spawnDynamicObject(
+        name,
         entityDef.position.x,
         entityDef.position.y,
         entityDef.position.z,
@@ -121,12 +124,14 @@ export class SceneManager {
       );
       const mesh = this.createMesh(entityDef.color);
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, mesh });
+      this.spawnedEntities.push({ handle, name, mesh });
     }
 
     // Spawn static entities
     for (const entityDef of definition.staticEntities) {
+      const name = entityDef.name;
       const handle = this.engine.spawnStaticObject(
+        name,
         entityDef.position.x,
         entityDef.position.y,
         entityDef.position.z,
@@ -138,7 +143,7 @@ export class SceneManager {
         entityDef.position.z,
       );
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, mesh });
+      this.spawnedEntities.push({ handle, name, mesh });
     }
 
     console.log(
@@ -255,6 +260,7 @@ export class SceneManager {
     this.controls?.update(deltaTime);
 
     const toRespawn: Array<{
+      name: string;
       color: number;
       y: number;
       vx: number;
@@ -267,10 +273,12 @@ export class SceneManager {
       if (!position) continue;
 
       if (position[0] > boundaryX) {
+        const name = spawned.name;
         const color = (
           spawned.mesh.material as THREE.MeshStandardMaterial
         ).color.getHex();
         toRespawn.push({
+          name,
           color,
           y: spawned.mesh.position.y,
           vx: 1.0,
@@ -295,7 +303,9 @@ export class SceneManager {
 
     // Respawn entities that crossed the boundary
     for (const config of toRespawn) {
+      const name = config.name;
       const handle = this.engine.spawnDynamicObject(
+        name,
         spawnX,
         config.y,
         0.0,
@@ -306,7 +316,7 @@ export class SceneManager {
       const mesh = this.createMesh(config.color);
       mesh.position.set(spawnX, config.y, 0.0);
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, mesh });
+      this.spawnedEntities.push({ handle, name, mesh });
     }
 
     // Sync camera transforms from ECS
