@@ -111,3 +111,90 @@ reintroduced without a documented, browser-verified reason.
 Yes. `0.2.125` should be treated as the current known-good pin. Do not
 change it without repeating the full verification sequence described
 above in the same session as the change.
+
+---
+
+## Addendum: Recurring Stale-Cache Symptoms (Vite + Build Artifacts)
+### Date
+2026-08-15
+### Context
+This ADR's Consequences section notes that `client/app/node_modules/.vite`
+must be cleared after any wasm-bindgen version change. Since this ADR was
+written, three separate incidents — across three sessions — have surfaced
+stale-cache-shaped symptoms related to but distinct from the version-pin
+issue above. Each was individually diagnosed and worked around, but never
+consolidated. This addendum exists so a future session recognizes the
+pattern immediately instead of re-diagnosing it.
+
+**Note on sourcing:** incident detail below is uneven. Incident 3 (the
+session that wrote this addendum) is documented from direct observation.
+Incidents 1 and 2 are carried forward from summary lines in an earlier
+session's handoff document, not from firsthand transcripts — kept to what
+was actually recorded rather than reconstructed.
+
+**Incident 1 — stale build artifact (two sessions prior to this addendum):**
+`cargo clean -p dt-engine-wasm` was run to force a clean WASM rebuild but
+reported "Removed 0 files" against artifacts that were, in practice, still
+stale. Workaround: `rm -rf engine/target/wasm32-unknown-unknown` instead of
+relying on `cargo clean -p`. Root cause of why `cargo clean -p` fails to
+detect these artifacts was not established — still open. Note: this is a
+Rust/cargo target-directory artifact, not a Vite cache issue; grouped here
+because it produces the same class of symptom (stale compiled output
+silently served) even though the mechanism differs from incidents 2 and 3.
+
+**Incident 2 — stale Vite cache, LinkError (session prior to this
+addendum):** A LinkError was observed after a WASM rebuild. Fix: clearing
+`client/app/node_modules/.vite` and restarting `make dev-client`. No
+further diagnostic detail was recorded in the handoff carried forward.
+
+**Incident 3 — stale Vite cache, missing method (session that wrote this
+addendum):** After adding `list_entity_hierarchy` to `EngineWorld` and
+rebuilding WASM, the browser threw
+`this.engineWorld.list_entity_hierarchy is not a function`. The generated
+`.d.ts` was confirmed (read fresh) to already include the method — ruling
+out a stale compile output. This isolated the cause to Vite's dependency
+pre-bundle serving a stale JS/WASM pair at runtime, independent of what was
+on disk. Same fix as incident 2.
+
+### Decision
+Treat any of the following, occurring shortly after a WASM rebuild, as
+stale-cache-shaped by default and check the layers below before assuming
+the newest code change is the cause:
+- `LinkError` at `WebAssembly.instantiate()`
+- `<method> is not a function` for a method just added or changed
+- Any other "the browser is behaving as if my change doesn't exist"
+  symptom immediately following a rebuild
+
+Check, in order:
+1. Confirm the `.d.ts`/generated bindings actually reflect the change
+   (read the file fresh).
+2. Clear `client/app/node_modules/.vite` (the directory the dev server
+   actually reads from — see this ADR's Context above on the two Vite
+   cache locations).
+3. Fully stop and restart `make dev-client` (not just a hard browser
+   refresh).
+4. If the symptom persists, consider the Rust/cargo target-directory
+   artifact layer (`engine/target/wasm32-unknown-unknown`) per Incident 1,
+   using `rm -rf` rather than `cargo clean -p`.
+
+### Reasoning
+Three incidents in three sessions, all resolved by clearing a cache layer
+rather than changing application code, indicate this is a structural
+property of the dev toolchain — not a series of unrelated one-off bugs.
+Incident 3 shows the symptom can look superficially different
+(missing-method vs. LinkError) while sharing the same root cause and fix.
+
+### Consequences
+- A future session hitting a stale-cache-shaped symptom should consult
+  this addendum before spending diagnostic time re-establishing what's
+  already known.
+- Does not replace the case for the proposed headless-browser smoke test
+  (see Outstanding Technical Debt) — a test would catch this
+  automatically; this addendum only speeds up manual diagnosis until then.
+- Incident 1's root cause (`cargo clean -p` reporting "Removed 0 files"
+  against real stale artifacts) remains unresolved. This documents the
+  workaround, not a fix.
+
+### Should this remain unchanged?
+Yes, as a running log — append if a fourth incident occurs, or if
+incident 1's root cause is ever diagnosed.
