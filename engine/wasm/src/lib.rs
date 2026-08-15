@@ -9,12 +9,16 @@
 //! Complex types like Vec3 and Quat are decomposed into individual f32 values.
 use dt_engine_core::{
     bundle::{CameraBundle, DynamicObjectBundle, StaticObjectBundle},
-    components::{CameraComponent, HierarchyError, LocalTransform, ProjectionType, WorldTransform},
+    components::{
+        CameraComponent, EntityInfo, HierarchyError, HierarchyNode, LocalTransform, ProjectionType,
+        WorldTransform,
+    },
     systems::{HierarchySystem, MovementSystem, System},
     world::World,
 };
 use glam::{Quat, Vec3};
 use hecs::Entity;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 mod reflection;
@@ -39,6 +43,14 @@ fn reflect_error_to_message(err: reflection::ReflectError) -> String {
         DeserializationFailed(msg) => format!("invalid value: {msg}"),
         ValidationFailed(msg) => msg,
     }
+}
+
+/// One entry in the flat list returned by `list_entity_hierarchy`.
+#[derive(Serialize)]
+struct EntityHierarchyNode {
+    handle: u32,
+    parent_handle: Option<u32>,
+    name: String,
 }
 
 /// The main entry point exposed to JavaScript.
@@ -90,6 +102,7 @@ impl EngineWorld {
     /// Returns a u32 handle that JavaScript uses to reference this entity.
     pub fn spawn_dynamic_object(
         &mut self,
+        name: &str,
         x: f32,
         y: f32,
         z: f32,
@@ -98,7 +111,7 @@ impl EngineWorld {
         vz: f32,
     ) -> u32 {
         let entity = self.world.spawn_bundle(DynamicObjectBundle::new(
-            "Dynamic Object",
+            name,
             Vec3::new(x, y, z),
             Vec3::new(vx, vy, vz),
         ));
@@ -106,10 +119,10 @@ impl EngineWorld {
     }
     /// Spawns a static entity at the given position.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
-    pub fn spawn_static_object(&mut self, x: f32, y: f32, z: f32) -> u32 {
+    pub fn spawn_static_object(&mut self, name: &str, x: f32, y: f32, z: f32) -> u32 {
         let entity = self
             .world
-            .spawn_bundle(StaticObjectBundle::new("Static Object", Vec3::new(x, y, z)));
+            .spawn_bundle(StaticObjectBundle::new(name, Vec3::new(x, y, z)));
         self.allocate_handle(entity)
     }
     /// Despawns an entity by handle, freeing its ECS memory and
@@ -362,6 +375,70 @@ impl EngineWorld {
     /// and any custom contexts added at runtime.
     pub fn list_contexts(&self) -> String {
         serde_json::to_string(self.world.registry.contexts()).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    // ── Entity Hierarchy (list view) ───────────────────────────────────
+    // Distinct from the reflection block above: this doesn't read
+    // component *values* generically, it's a fixed-shape translation
+    // of EngineWorld's own handle table + HierarchyNode into something
+    // the Entity Hierarchy panel can render as a tree. Lives here
+    // rather than a separate module because it depends on
+    // entity_handles, a private EngineWorld field — see Phase 13
+    // design discussion.
+
+    /// Returns every live entity as a flat list, JSON-encoded, for the
+    /// Entity Hierarchy panel to reconstruct into a tree client-side.
+    ///
+    /// Each entry carries `parent_handle` (None for roots) rather than
+    /// `children`, deliberately flat rather than nested — building a
+    /// nested tree here would duplicate HierarchySystem's own
+    /// depth-first walk for a different purpose (serialization, not
+    /// transform composition), and a flat list is what a drag-and-drop
+    /// tree UI wants to reconcile against anyway.
+    pub fn list_entity_hierarchy(&self) -> String {
+        // Entity -> handle reverse lookup. entity_handles only maps
+        // handle -> Entity; this is the one place EngineWorld needs
+        // the reverse direction, so it's built here rather than
+        // maintained as permanent state elsewhere.
+        let entity_to_handle: std::collections::HashMap<Entity, u32> = self
+            .entity_handles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| slot.map(|entity| (entity, index as u32)))
+            .collect();
+
+        let nodes: Vec<EntityHierarchyNode> = self
+            .entity_handles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| slot.map(|entity| (index as u32, entity)))
+            .map(|(handle, entity)| {
+                // Every spawn bundle attaches EntityInfo (confirmed:
+                // base/camera/dynamic_object/static_object bundles all
+                // add it explicitly) — no fallback label needed, this
+                // .expect documents that guarantee rather than silently
+                // masking a bundle that stopped attaching it.
+                let name = self
+                    .world
+                    .get_component::<EntityInfo>(entity)
+                    .expect("every spawned entity has EntityInfo")
+                    .name
+                    .clone();
+                let parent_handle = self
+                    .world
+                    .get_component::<HierarchyNode>(entity)
+                    .ok()
+                    .and_then(|node| node.parent)
+                    .and_then(|parent_entity| entity_to_handle.get(&parent_entity).copied());
+                EntityHierarchyNode {
+                    handle,
+                    parent_handle,
+                    name,
+                }
+            })
+            .collect();
+
+        serde_json::to_string(&nodes).unwrap_or_else(|_| "[]".to_string())
     }
 }
 
