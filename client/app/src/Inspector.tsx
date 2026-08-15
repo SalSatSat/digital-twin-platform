@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { Engine } from "@dt-platform/renderer";
 import type { FieldRendererProps } from "./inspector/FieldRenderer";
 import { CameraField } from "./inspector/CameraField";
@@ -15,6 +14,7 @@ const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
 
 interface InspectorProps {
   engine: Engine | null;
+  selectedHandle: number | null;
 }
 
 /**
@@ -27,9 +27,7 @@ interface InspectorProps {
  * shell (selection + component-kind listing) that per-kind field
  * renderers will be added into next.
  */
-export function Inspector({ engine }: InspectorProps) {
-  const [handleInput, setHandleInput] = useState("");
-
+export function Inspector({ engine, selectedHandle }: InspectorProps) {
   const panelStyle: React.CSSProperties = {
     width: 320,
     flexShrink: 0,
@@ -49,44 +47,25 @@ export function Inspector({ engine }: InspectorProps) {
     );
   }
 
-  const parsedHandle = handleInput.trim() === "" ? null : Number(handleInput);
-  const hasValidHandle =
-    parsedHandle !== null &&
-    Number.isInteger(parsedHandle) &&
-    parsedHandle >= 0;
-
-  const componentKinds = hasValidHandle
-    ? engine.listComponents(parsedHandle)
-    : [];
+  const componentKinds =
+    selectedHandle !== null ? engine.listComponents(selectedHandle) : [];
 
   return (
     <div style={panelStyle}>
       <h3 style={{ marginTop: 0 }}>Inspector</h3>
-      <label style={{ display: "block", marginBottom: 12 }}>
-        Entity handle:{" "}
-        <input
-          type="number"
-          min={0}
-          value={handleInput}
-          onChange={(e) => setHandleInput(e.target.value)}
-          style={{ width: 100 }}
-        />
-      </label>
 
-      {handleInput.trim() !== "" && !hasValidHandle && (
-        <p style={{ color: "#e57373" }}>Enter a valid non-negative handle.</p>
-      )}
+      {selectedHandle === null && <p>Select an entity from the hierarchy.</p>}
 
-      {hasValidHandle && componentKinds.length === 0 && (
+      {selectedHandle !== null && componentKinds.length === 0 && (
         <p>No reflectable components on this entity (or it doesn't exist).</p>
       )}
 
-      {hasValidHandle &&
+      {selectedHandle !== null &&
         componentKinds.map((kind) => {
           const Renderer = fieldRegistry[kind];
           return (
             <div
-              key={kind}
+              key={`${kind}-${selectedHandle}`}
               style={{
                 border: "1px solid #3a3a3a",
                 borderRadius: 4,
@@ -95,7 +74,7 @@ export function Inspector({ engine }: InspectorProps) {
               }}
             >
               {Renderer ? (
-                <Renderer engine={engine} handle={parsedHandle!} />
+                <Renderer engine={engine} handle={selectedHandle} />
               ) : (
                 <>
                   <strong>{kind}</strong>
