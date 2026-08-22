@@ -37,36 +37,22 @@ export function EntityHierarchyPanel({
   const [nodes, setNodes] = useState<EntityHierarchyNode[]>([]);
   const [draggedHandle, setDraggedHandle] = useState<number | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!engine) return;
-
     const fetchHierarchy = () => {
       const json = engine.listEntityHierarchy();
       setNodes(JSON.parse(json) as EntityHierarchyNode[]);
     };
-
     fetchHierarchy();
     const intervalId = setInterval(fetchHierarchy, 1000);
     return () => clearInterval(intervalId);
   }, [engine]);
 
-  const panelStyle: React.CSSProperties = {
-    width: 240,
-    flexShrink: 0,
-    padding: 16,
-    background: "#252525",
-    color: "#e0e0e0",
-    fontFamily: "sans-serif",
-    fontSize: 13,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-  };
-
   if (!engine) {
     return (
-      <div style={panelStyle}>
+      <div className="w-60 shrink-0 p-4 bg-surface text-text-primary text-sm overflow-y-auto flex flex-col">
         <p>Initializing engine…</p>
       </div>
     );
@@ -74,6 +60,18 @@ export function EntityHierarchyPanel({
 
   const childrenOf = (parentHandle: number | null): EntityHierarchyNode[] =>
     nodes.filter((n) => n.parent_handle === parentHandle);
+
+  function toggleCollapsed(handle: number) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(handle)) {
+        next.delete(handle);
+      } else {
+        next.add(handle);
+      }
+      return next;
+    });
+  }
 
   const handleDrop = (targetHandle: number) => {
     if (draggedHandle === null || draggedHandle === targetHandle) {
@@ -108,11 +106,14 @@ export function EntityHierarchyPanel({
 
   const renderNode = (node: EntityHierarchyNode): React.ReactNode => {
     const children = childrenOf(node.handle);
+    const hasChildren = children.length > 0;
     const isSelected = node.handle === selectedHandle;
     const isDragTarget =
       draggedHandle !== null && draggedHandle !== node.handle;
+    const isCollapsed = collapsed.has(node.handle);
+
     return (
-      <div key={node.handle} style={{ marginLeft: 12 }}>
+      <div key={node.handle}>
         <div
           draggable
           onDragStart={() => setDraggedHandle(node.handle)}
@@ -124,16 +125,27 @@ export function EntityHierarchyPanel({
             handleDrop(node.handle);
           }}
           onClick={() => onSelect(node.handle)}
-          style={{
-            cursor: "grab",
-            padding: "2px 4px",
-            borderRadius: 3,
-            background: isSelected ? "#3a5f8a" : "transparent",
-          }}
+          className={
+            isSelected
+              ? "flex items-center gap-1 cursor-grab px-1 py-0.5 rounded bg-accent/30 text-text-primary"
+              : "flex items-center gap-1 cursor-grab px-1 py-0.5 rounded text-text-primary hover:bg-surface-raised"
+          }
         >
-          {node.name}
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              if (hasChildren) toggleCollapsed(node.handle);
+            }}
+            className={`w-3 shrink-0 text-xs text-text-muted ${hasChildren ? "cursor-pointer" : ""}`}
+          >
+            {hasChildren ? (isCollapsed ? "▸" : "▾") : ""}
+          </span>
+          <span className="w-3 h-3 shrink-0 rounded-sm border border-text-muted" />
+          <span className="truncate">{node.name}</span>
         </div>
-        {children.map(renderNode)}
+        {hasChildren && !isCollapsed && (
+          <div className="ml-4">{children.map(renderNode)}</div>
+        )}
       </div>
     );
   };
@@ -141,13 +153,11 @@ export function EntityHierarchyPanel({
   const roots = childrenOf(null);
 
   return (
-    <div style={panelStyle}>
-      <h3 style={{ marginTop: 0 }}>Entity Hierarchy</h3>
-      {dropError && (
-        <p style={{ color: "#e57373", fontSize: 12 }}>{dropError}</p>
-      )}
-      <div style={{ flex: 1 }}>
-        {roots.length === 0 && <p>No entities.</p>}
+    <div className="w-60 shrink-0 p-4 bg-surface text-text-primary text-sm overflow-y-auto flex flex-col">
+      <h3 className="mb-2 font-semibold">Hierarchy</h3>
+      {dropError && <p className="text-text-error text-xs">{dropError}</p>}
+      <div className="flex-1">
+        {roots.length === 0 && <p className="text-text-muted">No entities.</p>}
         {roots.map(renderNode)}
       </div>
       <div
@@ -158,13 +168,7 @@ export function EntityHierarchyPanel({
           e.preventDefault();
           handleDropToRoot();
         }}
-        style={{
-          marginTop: 8,
-          padding: 8,
-          borderTop: "1px dashed #444",
-          fontSize: 11,
-          color: "#888",
-        }}
+        className="mt-2 p-2 border-t border-dashed border-border text-xs text-text-muted"
       >
         Drop here to un-parent
       </div>
