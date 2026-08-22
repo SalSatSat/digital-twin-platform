@@ -7,21 +7,19 @@ import type { Engine } from "@dt-platform/renderer";
 function App() {
   const [engine, setEngine] = useState<Engine | null>(null);
   const [selectedHandle, setSelectedHandle] = useState<number | null>(null);
-
   return (
-    <div
-      style={{ display: "flex", width: "100vw", height: "100vh", margin: 0 }}
-    >
+    <div className="flex w-screen h-screen">
       <EntityHierarchyPanel
         engine={engine}
         selectedHandle={selectedHandle}
         onSelect={setSelectedHandle}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex-1 min-w-0">
         <EngineView onEngineReady={setEngine} />
       </div>
       <Inspector engine={engine} selectedHandle={selectedHandle} />
     </div>
   );
 }
+
 export default App;
