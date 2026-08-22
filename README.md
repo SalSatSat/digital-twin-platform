@@ -178,12 +178,13 @@ application.
 ## Technology Stack
 
 | Layer           | Technology               | Purpose                         |
-| --------------- | ------------------------ | ------------------------------- |
+| --------------- | ------------------------ | -------------------------------- |
 | ECS Engine      | Rust 1.95 + hecs 0.11    | Entity-component-system runtime |
 | Math            | glam 0.32                | Vec3, Quat, Mat4 primitives     |
 | WASM Bridge     | wasm-bindgen + wasm-pack | Rust → JavaScript interop       |
 | Renderer        | Three.js 0.177           | 3D scene, WebGL/WebGPU          |
 | Frontend        | React 19 + TypeScript    | Application shell               |
+| Styling         | Tailwind CSS 4           | Utility-first CSS, design tokens |
 | Build Tool      | Vite 8                   | Frontend dev server + bundler   |
 | Package Manager | pnpm 11                  | Monorepo workspace management   |
 | API Server      | Go 1.26                  | REST API (future)               |
@@ -232,6 +233,7 @@ _To be determined_
 | [wasm-pack](https://rustwasm.github.io/wasm-pack/) | MIT / Apache 2.0   |
 | [Three.js](https://threejs.org/)                   | MIT                |
 | [React](https://react.dev/)                        | MIT                |
+| [Tailwind CSS](https://tailwindcss.com/)           | MIT                |
 | [Go](https://go.dev/)                              | BSD 3-Clause       |
 | [PostgreSQL](https://www.postgresql.org/)          | PostgreSQL License |
 | [Redis](https://redis.io/)                         | RSALv2 / SSPLv1    |
@@ -254,29 +256,30 @@ _To be determined_
 | Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting                                                                                                                   | Phase 9    |
 | Phase 11 | Camera controls — Free Camera navigation                                                                                                                               | Phase 10   |
 | Phase 12 | Entity hierarchy — LocalTransform/WorldTransform propagation, parent/child relationships via `set_parent`/`remove_parent`                                              | Phase 8    |
+| Phase 13 | Runtime Editor — UI shell, Hierarchy panel, generic Inspector, registry validation                                                     | Phase 12   |
 
 **Upcoming**
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 13 | Runtime Editor — UI shell, Hierarchy panel, generic Inspector, registry validation                                                     | Phase 12   |
-| Phase 14 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 13   |
-| Phase 15 | GLB model loading at runtime                                                                                                           | Phase 14   |
-| Phase 16 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 20)                                            | Phase 13   |
-| Phase 17 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 15   |
-| Phase 18 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 17   |
-| Phase 19 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 18   |
-| Phase 20 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 16's debug metrics                   | Phase 19   |
-| Phase 21 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 19   |
-| Phase 22 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 21   |
+| Phase 14 | Editor Functional Wiring — Inspector edits reflected in simulation (rotation/velocity/camera/enabled/visible), edit-mode pause (deltatime hold), editor visibility toggle with URL state, Project/Console-style panel tabs | Phase 13   |
+| Phase 15 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 14   |
+| Phase 16 | GLB model loading at runtime                                                                                                           | Phase 15   |
+| Phase 17 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 21)                                            | Phase 13   |
+| Phase 18 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 16   |
+| Phase 19 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 18   |
+| Phase 20 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 19   |
+| Phase 21 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 17's debug metrics                   | Phase 20   |
+| Phase 22 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 20   |
+| Phase 23 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 22   |
 
 **Not yet scheduled**
 
 True concurrent collaborative editing — multiple users editing the same
 entity simultaneously with conflict resolution (CRDT/OT-style) — is
-deliberately not given a phase number. Phase 22 ships an eventually-consistent
+deliberately not given a phase number. Phase 23 ships an eventually-consistent
 model (changes are visible to other users on next sync, not live). Whether
-true concurrent editing is ever needed will be reassessed after Phase 22
+true concurrent editing is ever needed will be reassessed after Phase 23
 ships, based on how the platform is actually used with real teams.
 
 > This roadmap is a living document. New phases may be added as requirements evolve.
