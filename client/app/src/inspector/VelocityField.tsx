@@ -25,18 +25,18 @@ export function VelocityField({ engine, handle }: FieldRendererProps) {
       <strong className="text-xs font-semibold text-text-muted uppercase tracking-wide">
         Velocity
       </strong>
-      <div className="flex gap-2 mt-1">
+      <div className="grid grid-cols-3 gap-2 mt-1">
         {(["x", "y", "z"] as const).map((axis, i) => (
           <label
             key={axis}
-            className="flex items-center gap-1 text-sm text-text-primary"
+            className="flex items-center gap-1 text-sm text-text-primary min-w-0"
           >
-            {axis}:
+            <span className="shrink-0">{axis}:</span>
             <input
               type="number"
               value={[x, y, z][i]}
               onChange={(e) => setAxis(i as 0 | 1 | 2, Number(e.target.value))}
-              className="w-15 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
+              className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </label>
         ))}
