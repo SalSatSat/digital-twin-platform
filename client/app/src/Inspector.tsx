@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Engine } from "@dt-platform/renderer";
 import type { FieldRendererProps } from "./inspector/FieldRenderer";
 import { CameraField } from "./inspector/CameraField";
@@ -7,9 +8,14 @@ import { VelocityField } from "./inspector/VelocityField";
 
 const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
   Camera: CameraField,
-  EntityInfo: EntityInfoField,
   LocalTransform: LocalTransformField,
   Velocity: VelocityField,
+};
+
+const displayNames: Record<string, string> = {
+  LocalTransform: "Transform",
+  Camera: "Camera",
+  Velocity: "Velocity",
 };
 
 interface InspectorProps {
@@ -17,75 +23,86 @@ interface InspectorProps {
   selectedHandle: number | null;
 }
 
-/**
- * Runtime Editor Inspector panel — lets the user select an entity by
- * handle and view/edit its reflectable components.
- *
- * Entity selection is a temporary numeric handle input for now; a real
- * hierarchy/entity-list panel is future work (Phase 13 continues).
- * Component values themselves are not yet editable here — this is the
- * shell (selection + component-kind listing) that per-kind field
- * renderers will be added into next.
- */
 export function Inspector({ engine, selectedHandle }: InspectorProps) {
-  const panelStyle: React.CSSProperties = {
-    width: 320,
-    flexShrink: 0,
-    padding: 16,
-    background: "#1e1e1e",
-    color: "#e0e0e0",
-    fontFamily: "sans-serif",
-    fontSize: 13,
-    overflowY: "auto",
-  };
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  function toggleCollapsed(kind: string) {
+    setCollapsed((prev) => ({ ...prev, [kind]: !prev[kind] }));
+  }
 
   if (!engine) {
     return (
-      <div style={panelStyle}>
+      <div className="w-80 shrink-0 p-4 bg-surface text-text-primary text-sm overflow-y-auto">
         <p>Initializing engine…</p>
       </div>
     );
   }
 
-  const componentKinds =
+  const allKinds =
     selectedHandle !== null ? engine.listComponents(selectedHandle) : [];
+  const hasEntityInfo = allKinds.includes("EntityInfo");
+  const componentKinds = allKinds.filter((k) => k !== "EntityInfo");
 
   return (
-    <div style={panelStyle}>
-      <h3 style={{ marginTop: 0 }}>Inspector</h3>
-
-      {selectedHandle === null && <p>Select an entity from the hierarchy.</p>}
-
-      {selectedHandle !== null && componentKinds.length === 0 && (
-        <p>No reflectable components on this entity (or it doesn't exist).</p>
+    <div className="w-80 shrink-0 bg-surface text-text-primary text-sm overflow-y-auto">
+      <h3 className="px-4 py-3 font-semibold">Inspector</h3>
+      {selectedHandle === null && (
+        <p className="px-4 text-text-muted">
+          Select an entity from the hierarchy.
+        </p>
       )}
-
-      {selectedHandle !== null &&
-        componentKinds.map((kind) => {
-          const Renderer = fieldRegistry[kind];
-          return (
-            <div
-              key={`${kind}-${selectedHandle}`}
-              style={{
-                border: "1px solid #3a3a3a",
-                borderRadius: 4,
-                padding: 8,
-                marginBottom: 8,
-              }}
+      {selectedHandle !== null && allKinds.length === 0 && (
+        <p className="px-4 text-text-muted">
+          No reflectable components on this entity (or it doesn't exist).
+        </p>
+      )}
+      {hasEntityInfo && (
+        <div className="px-4 pb-3 border-b border-border">
+          <EntityInfoField
+            key={selectedHandle}
+            engine={engine}
+            handle={selectedHandle!}
+          />
+        </div>
+      )}
+      {componentKinds.map((kind) => {
+        const Renderer = fieldRegistry[kind];
+        const isCollapsed = collapsed[kind] ?? false;
+        return (
+          <div
+            key={`${kind}-${selectedHandle}`}
+            className="border-b border-border"
+          >
+            <button
+              type="button"
+              onClick={() => toggleCollapsed(kind)}
+              className="w-full flex items-center gap-1 px-4 py-2 text-left text-xs font-semibold text-text-muted hover:text-text-primary"
             >
-              {Renderer ? (
-                <Renderer engine={engine} handle={selectedHandle} />
-              ) : (
-                <>
-                  <strong>{kind}</strong>
-                  <p style={{ color: "#888", margin: "4px 0 0" }}>
+              <span
+                className={
+                  isCollapsed
+                    ? "-rotate-90 inline-block transition-transform"
+                    : "inline-block transition-transform"
+                }
+              >
+                ▾
+              </span>
+              {displayNames[kind] ?? kind}
+            </button>
+            {!isCollapsed && (
+              <div className="px-4 pb-3">
+                {Renderer ? (
+                  <Renderer engine={engine} handle={selectedHandle!} />
+                ) : (
+                  <p className="text-text-muted">
                     (field renderer coming next)
                   </p>
-                </>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
