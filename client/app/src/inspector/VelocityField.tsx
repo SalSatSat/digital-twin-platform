@@ -11,9 +11,7 @@ export function VelocityField({ engine, handle }: FieldRendererProps) {
     handle,
     "Velocity",
   );
-
   if (!value) return null;
-
   const [x, y, z] = value.value;
 
   function setAxis(index: 0 | 1 | 2, next: number) {
@@ -24,21 +22,26 @@ export function VelocityField({ engine, handle }: FieldRendererProps) {
 
   return (
     <div>
-      <strong>Velocity</strong>
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+      <strong className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+        Velocity
+      </strong>
+      <div className="flex gap-2 mt-1">
         {(["x", "y", "z"] as const).map((axis, i) => (
-          <label key={axis}>
-            {axis}:{" "}
+          <label
+            key={axis}
+            className="flex items-center gap-1 text-sm text-text-primary"
+          >
+            {axis}:
             <input
               type="number"
               value={[x, y, z][i]}
               onChange={(e) => setAxis(i as 0 | 1 | 2, Number(e.target.value))}
-              style={{ width: 60 }}
+              className="w-15 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </label>
         ))}
       </div>
-      {error && <p style={{ color: "#e57373", margin: "4px 0 0" }}>{error}</p>}
+      {error && <p className="text-text-error text-xs mt-1">{error}</p>}
     </div>
   );
 }

@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+@theme {
+  --color-surface: #18181b;        /* zinc-900 — panel/page background */
+  --color-surface-raised: #27272a; /* zinc-800 — input/card fill */
+  --color-border: #3f3f46;         /* zinc-700 — default borders */
+  --color-text-primary: #f4f4f5;   /* zinc-100 — input text, primary content */
+  --color-text-muted: #a1a1aa;     /* zinc-400 — labels, secondary text */
+  --color-text-error: #f87171;     /* red-400 — validation/error messages */
+  --color-accent: #3b82f6;         /* blue-500 — focus rings, active states */
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;
