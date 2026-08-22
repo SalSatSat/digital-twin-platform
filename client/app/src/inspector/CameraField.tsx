@@ -14,7 +14,6 @@ interface OrthographicFields {
 type ProjectionType =
   | { Perspective: PerspectiveFields }
   | { Orthographic: OrthographicFields };
-
 interface CameraValue {
   projection: ProjectionType;
 }
@@ -29,9 +28,7 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
     handle,
     "Camera",
   );
-
   if (!value) return null;
-
   const variant = variantOf(value.projection);
 
   function setVariant(next: "Perspective" | "Orthographic") {
@@ -48,7 +45,6 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
             .far
         : (value!.projection as { Orthographic: OrthographicFields })
             .Orthographic.far;
-
     setValue({
       projection:
         next === "Perspective"
@@ -62,13 +58,11 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
           : { Orthographic: { size: 10, near: currentNear, far: currentFar } },
     });
   }
-
   function updatePerspective(patch: Partial<PerspectiveFields>) {
     const current = (value!.projection as { Perspective: PerspectiveFields })
       .Perspective;
     setValue({ projection: { Perspective: { ...current, ...patch } } });
   }
-
   function updateOrthographic(patch: Partial<OrthographicFields>) {
     const current = (value!.projection as { Orthographic: OrthographicFields })
       .Orthographic;
@@ -77,23 +71,25 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
 
   return (
     <div>
-      <strong>Camera</strong>
-      <div style={{ marginTop: 4 }}>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-text-primary w-20 shrink-0">
+          Projection
+        </span>
         <select
           value={variant}
           onChange={(e) =>
             setVariant(e.target.value as "Perspective" | "Orthographic")
           }
+          className="w-28 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:ring-1 focus:ring-accent focus:outline-none"
         >
           <option value="Perspective">Perspective</option>
           <option value="Orthographic">Orthographic</option>
         </select>
       </div>
-
       {variant === "Perspective" ? (
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <label>
-            FOV:{" "}
+        <>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-text-primary w-20 shrink-0">FOV</span>
             <input
               type="number"
               value={
@@ -103,11 +99,13 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
               onChange={(e) =>
                 updatePerspective({ fov_degrees: Number(e.target.value) })
               }
-              style={{ width: 60 }}
+              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
-          </label>
-          <label>
-            Near:{" "}
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-text-primary w-20 shrink-0">
+              Near
+            </span>
             <input
               type="number"
               value={
@@ -117,11 +115,11 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
               onChange={(e) =>
                 updatePerspective({ near: Number(e.target.value) })
               }
-              style={{ width: 60 }}
+              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
-          </label>
-          <label>
-            Far:{" "}
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-text-primary w-20 shrink-0">Far</span>
             <input
               type="number"
               value={
@@ -131,14 +129,16 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
               onChange={(e) =>
                 updatePerspective({ far: Number(e.target.value) })
               }
-              style={{ width: 60 }}
+              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
-          </label>
-        </div>
+          </div>
+        </>
       ) : (
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <label>
-            Size:{" "}
+        <>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-text-primary w-20 shrink-0">
+              Size
+            </span>
             <input
               type="number"
               value={
@@ -148,11 +148,13 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
               onChange={(e) =>
                 updateOrthographic({ size: Number(e.target.value) })
               }
-              style={{ width: 60 }}
+              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
-          </label>
-          <label>
-            Near:{" "}
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-text-primary w-20 shrink-0">
+              Near
+            </span>
             <input
               type="number"
               value={
@@ -162,11 +164,11 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
               onChange={(e) =>
                 updateOrthographic({ near: Number(e.target.value) })
               }
-              style={{ width: 60 }}
+              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
-          </label>
-          <label>
-            Far:{" "}
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-text-primary w-20 shrink-0">Far</span>
             <input
               type="number"
               value={
@@ -176,12 +178,12 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
               onChange={(e) =>
                 updateOrthographic({ far: Number(e.target.value) })
               }
-              style={{ width: 60 }}
+              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
-          </label>
-        </div>
+          </div>
+        </>
       )}
-      {error && <p style={{ color: "#e57373", margin: "4px 0 0" }}>{error}</p>}
+      {error && <p className="text-text-error text-xs mt-1">{error}</p>}
     </div>
   );
 }
