@@ -10,7 +10,6 @@ interface EntityInfoValue {
   category: string;
   contexts: string[];
 }
-
 interface CategoryDef {
   id: string;
   name: string;
@@ -18,7 +17,6 @@ interface CategoryDef {
   icon: string | null;
   is_builtin: boolean;
 }
-
 interface ContextDef {
   id: string;
   name: string;
@@ -33,17 +31,12 @@ export function EntityInfoField({ engine, handle }: FieldRendererProps) {
     handle,
     "EntityInfo",
   );
-
-  // Registry data — not per-entity, doesn't depend on handle. Fetched
-  // once via a lazy initializer (same "synchronous WASM call, no
-  // useEffect needed" reasoning as useComponentField).
   const [categories] = useState<CategoryDef[]>(
     () => JSON.parse(engine.listCategories()) as CategoryDef[],
   );
   const [contexts] = useState<ContextDef[]>(
     () => JSON.parse(engine.listContexts()) as ContextDef[],
   );
-
   if (!value) return null;
 
   function toggleContext(name: string) {
@@ -56,67 +49,66 @@ export function EntityInfoField({ engine, handle }: FieldRendererProps) {
 
   return (
     <div>
-      <strong>Entity Info</strong>
-      <div style={{ marginTop: 4, fontSize: 11, color: "#888" }}>
-        ID: {value.id}
-      </div>
-      <div style={{ marginTop: 4 }}>
-        <label>
-          Name:{" "}
-          <input
-            type="text"
-            value={value.name}
-            onChange={(e) => setValue({ ...value!, name: e.target.value })}
-          />
-        </label>
-      </div>
-      <div style={{ marginTop: 4, display: "flex", gap: 8 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={value.enabled}
-            onChange={(e) => setValue({ ...value!, enabled: e.target.checked })}
-          />{" "}
-          Enabled
-        </label>
-        <label>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={value.enabled}
+          onChange={(e) => setValue({ ...value!, enabled: e.target.checked })}
+          className="accent-accent shrink-0"
+        />
+        <input
+          type="text"
+          value={value.name}
+          onChange={(e) => setValue({ ...value!, name: e.target.value })}
+          className="flex-1 min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
+        />
+        <label className="flex items-center gap-1 text-sm text-text-primary shrink-0">
           <input
             type="checkbox"
             checked={value.visible}
             onChange={(e) => setValue({ ...value!, visible: e.target.checked })}
-          />{" "}
+            className="accent-accent"
+          />
           Visible
         </label>
       </div>
-      <div style={{ marginTop: 4 }}>
-        <label>
-          Category:{" "}
-          <select
-            value={value.category}
-            onChange={(e) => setValue({ ...value!, category: e.target.value })}
-          >
-            {categories.map((c) => (
-              <option key={c.id} value={c.name}>
+      <div className="mt-1 flex items-center gap-2">
+        <span className="text-xs text-text-muted shrink-0">Category</span>
+        <select
+          value={value.category}
+          onChange={(e) => setValue({ ...value!, category: e.target.value })}
+          className="w-20 bg-surface-raised border border-border rounded px-1 py-0.5 text-xs text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
+        >
+          {categories.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="mt-1">
+        <div className="text-xs text-text-muted mb-1">Contexts</div>
+        <div className="flex flex-wrap gap-1">
+          {contexts.map((c) => {
+            const active = value.contexts.includes(c.name);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => toggleContext(c.name)}
+                className={
+                  active
+                    ? "px-2 py-0.5 rounded text-xs border border-accent bg-accent/20 text-accent"
+                    : "px-2 py-0.5 rounded text-xs border border-border bg-surface-raised text-text-muted"
+                }
+              >
                 {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div style={{ marginTop: 4 }}>
-        <div style={{ fontSize: 11, color: "#888" }}>Contexts</div>
-        {contexts.map((c) => (
-          <label key={c.id} style={{ marginRight: 8 }}>
-            <input
-              type="checkbox"
-              checked={value.contexts.includes(c.name)}
-              onChange={() => toggleContext(c.name)}
-            />{" "}
-            {c.name}
-          </label>
-        ))}
-      </div>
-      {error && <p style={{ color: "#e57373", margin: "4px 0 0" }}>{error}</p>}
+      {error && <p className="text-text-error text-xs mt-1">{error}</p>}
     </div>
   );
 }
