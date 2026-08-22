@@ -5,6 +5,8 @@ interface VelocityValue {
   value: [number, number, number];
 }
 
+const axisColors = ["text-red-400", "text-green-400", "text-blue-400"];
+
 export function VelocityField({ engine, handle }: FieldRendererProps) {
   const { value, setValue, error } = useComponentField<VelocityValue>(
     engine,
@@ -22,24 +24,29 @@ export function VelocityField({ engine, handle }: FieldRendererProps) {
 
   return (
     <div>
-      <strong className="text-xs font-semibold text-text-muted uppercase tracking-wide">
-        Velocity
-      </strong>
-      <div className="grid grid-cols-3 gap-2 mt-1">
-        {(["x", "y", "z"] as const).map((axis, i) => (
-          <label
-            key={axis}
-            className="flex items-center gap-1 text-sm text-text-primary min-w-0"
-          >
-            <span className="shrink-0">{axis}:</span>
-            <input
-              type="number"
-              value={[x, y, z][i]}
-              onChange={(e) => setAxis(i as 0 | 1 | 2, Number(e.target.value))}
-              className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
-            />
-          </label>
-        ))}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-text-primary w-20 shrink-0">
+          Velocity
+        </span>
+        <div className="flex-1 grid grid-cols-3 gap-1">
+          {(["X", "Y", "Z"] as const).map((axis, i) => (
+            <label key={axis} className="flex items-center gap-1 min-w-0">
+              <span
+                className={`text-xs font-semibold shrink-0 ${axisColors[i]}`}
+              >
+                {axis}
+              </span>
+              <input
+                type="number"
+                value={[x, y, z][i]}
+                onChange={(e) =>
+                  setAxis(i as 0 | 1 | 2, Number(e.target.value))
+                }
+                className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:ring-1 focus:ring-accent focus:outline-none"
+              />
+            </label>
+          ))}
+        </div>
       </div>
       {error && <p className="text-text-error text-xs mt-1">{error}</p>}
     </div>

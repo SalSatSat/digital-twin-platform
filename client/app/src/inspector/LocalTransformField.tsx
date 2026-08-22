@@ -6,6 +6,8 @@ interface LocalTransformValue {
   rotation_euler_deg: [number, number, number];
 }
 
+const axisColors = ["text-red-400", "text-green-400", "text-blue-400"];
+
 export function LocalTransformField({ engine, handle }: FieldRendererProps) {
   const { value, setValue, error } = useComponentField<LocalTransformValue>(
     engine,
@@ -27,48 +29,49 @@ export function LocalTransformField({ engine, handle }: FieldRendererProps) {
 
   return (
     <div>
-      <strong className="text-xs font-semibold text-text-muted uppercase tracking-wide">
-        Transform
-      </strong>
-      <div className="mt-1">
-        <div className="text-xs text-text-muted mb-1">Position</div>
-        <div className="grid grid-cols-3 gap-2">
-          {(["x", "y", "z"] as const).map((axis, i) => (
-            <label
-              key={axis}
-              className="flex items-center gap-1 text-sm text-text-primary min-w-0"
-            >
-              <span className="shrink-0">{axis}:</span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-text-primary w-20 shrink-0">
+          Position
+        </span>
+        <div className="flex-1 grid grid-cols-3 gap-1">
+          {(["X", "Y", "Z"] as const).map((axis, i) => (
+            <label key={axis} className="flex items-center gap-1 min-w-0">
+              <span
+                className={`text-xs font-semibold shrink-0 ${axisColors[i]}`}
+              >
+                {axis}
+              </span>
               <input
                 type="number"
                 value={value.position[i]}
                 onChange={(e) =>
                   setPositionAxis(i as 0 | 1 | 2, Number(e.target.value))
                 }
-                className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
+                className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:ring-1 focus:ring-accent focus:outline-none"
               />
             </label>
           ))}
         </div>
       </div>
-      <div className="mt-1">
-        <div className="text-xs text-text-muted mb-1">
-          Rotation (degrees, pitch/yaw/roll)
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {(["pitch", "yaw", "roll"] as const).map((axis, i) => (
-            <label
-              key={axis}
-              className="flex items-center gap-1 text-sm text-text-primary min-w-0"
-            >
-              <span className="shrink-0">{axis}:</span>
+      <div className="flex items-center gap-2 mt-1">
+        <span className="text-sm text-text-primary w-20 shrink-0">
+          Rotation
+        </span>
+        <div className="flex-1 grid grid-cols-3 gap-1">
+          {(["X", "Y", "Z"] as const).map((axis, i) => (
+            <label key={axis} className="flex items-center gap-1 min-w-0">
+              <span
+                className={`text-xs font-semibold shrink-0 ${axisColors[i]}`}
+              >
+                {axis}
+              </span>
               <input
                 type="number"
                 value={value.rotation_euler_deg[i]}
                 onChange={(e) =>
                   setRotationAxis(i as 0 | 1 | 2, Number(e.target.value))
                 }
-                className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
+                className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:ring-1 focus:ring-accent focus:outline-none"
               />
             </label>
           ))}
