@@ -224,6 +224,25 @@ impl EngineWorld {
             transform.position.z,
         ])
     }
+    /// Returns the rotation of an entity as a flat quaternion [x, y, z, w].
+    /// Returns None if the handle is invalid, despawned, or has no WorldTransform.
+    ///
+    /// Reads WorldTransform, not LocalTransform, for the same reason as
+    /// get_position — an entity attached to a rotated parent should
+    /// report its absolute world-space rotation.
+    pub fn get_rotation(&self, handle: u32) -> Option<Vec<f32>> {
+        let entity = self
+            .entity_handles
+            .get(handle as usize)
+            .and_then(|slot| slot.as_ref())?;
+        let transform = self.world.get_component::<WorldTransform>(*entity).ok()?;
+        Some(vec![
+            transform.rotation.x,
+            transform.rotation.y,
+            transform.rotation.z,
+            transform.rotation.w,
+        ])
+    }
     /// Spawns a perspective camera entity.
     /// Returns a u32 handle that JavaScript uses to reference this camera.
     ///
@@ -472,5 +491,68 @@ impl EngineWorld {
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())
             .copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_rotation_returns_identity_for_freshly_spawned_entity() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_dynamic_object("Cube", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+        let rotation = world
+            .get_rotation(handle)
+            .expect("entity should have a rotation");
+
+        assert_eq!(rotation, vec![0.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn get_rotation_returns_none_for_invalid_handle() {
+        let world = EngineWorld::new();
+        assert!(world.get_rotation(999).is_none());
+    }
+
+    #[test]
+    fn get_rotation_returns_none_for_despawned_entity() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.despawn_entity(handle);
+
+        assert!(world.get_rotation(handle).is_none());
+    }
+
+    #[test]
+    fn get_rotation_reflects_rotation_written_via_reflection_after_tick() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        // A 90-degree yaw is exactly representable in a quaternion —
+        // avoids floating-point tolerance issues below. Same choice
+        // reflection.rs's own rotation round-trip test makes.
+        let json = serde_json::json!({
+            "position": [0.0, 0.0, 0.0],
+            "rotation_euler_deg": [0.0, 90.0, 0.0]
+        });
+        let rejection = world.set_component_json(handle, "LocalTransform", &json.to_string());
+        assert!(rejection.is_none(), "write should succeed: {:?}", rejection);
+
+        // WorldTransform is only recomputed from LocalTransform when
+        // HierarchySystem runs — this mirrors exactly what the
+        // renderer's per-frame sync depends on, and is the actual
+        // mechanism this test is guarding against regressing.
+        world.tick(0.0);
+
+        let rotation = world
+            .get_rotation(handle)
+            .expect("entity should have a rotation");
+        let expected = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        assert!((rotation[0] - expected.x).abs() < 0.001);
+        assert!((rotation[1] - expected.y).abs() < 0.001);
+        assert!((rotation[2] - expected.z).abs() < 0.001);
+        assert!((rotation[3] - expected.w).abs() < 0.001);
     }
 }
