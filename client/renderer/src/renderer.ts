@@ -39,6 +39,14 @@ export class Renderer {
   private animationFrameId: number | null = null;
   private lastFrameTime: number = 0;
 
+  // Whether the simulation is paused for editing. When true, the ECS
+  // tick receives a delta_time of 0 (holding physics/movement still),
+  // while the scene sync (mesh transforms, camera controls) continues
+  // to receive real delta_time so camera navigation stays responsive.
+  private editMode: boolean = false;
+
+  private resizeObserver: ResizeObserver;
+
   constructor(canvas: HTMLCanvasElement, engine: Engine) {
     this.canvas = canvas;
     this.engine = engine;
@@ -47,7 +55,7 @@ export class Renderer {
 
     this.fallbackCamera = new THREE.PerspectiveCamera(
       75,
-      window.innerWidth / window.innerHeight,
+      canvas.clientWidth / canvas.clientHeight,
       0.1,
       1000,
     );
@@ -63,9 +71,14 @@ export class Renderer {
     console.log(`Render backend: ${hasWebGPU ? "WebGPU" : "WebGL (fallback)"}`);
 
     this.backend.setPixelRatio(window.devicePixelRatio);
-    this.backend.setSize(window.innerWidth, window.innerHeight);
+    this.backend.setSize(canvas.clientWidth, canvas.clientHeight);
 
-    window.addEventListener("resize", this.onResize);
+    // ResizeObserver, not window "resize" — the canvas's own size can
+    // change from layout shifts (e.g. side panels appearing/disappearing
+    // when toggling edit mode) without the browser window itself
+    // resizing. window.resize would miss that entirely.
+    this.resizeObserver = new ResizeObserver(this.onResize);
+    this.resizeObserver.observe(canvas);
     window.addEventListener("keydown", this.onKeyDown);
   }
 
@@ -118,15 +131,31 @@ export class Renderer {
    */
   dispose(): void {
     this.stop();
-    window.removeEventListener("resize", this.onResize);
+    this.resizeObserver.disconnect();
     window.removeEventListener("keydown", this.onKeyDown);
     this.sceneManager.unloadScene();
     this.backend.dispose();
   }
 
+  /**
+   * Sets whether the simulation is paused for editing.
+   *
+   * While true, the ECS tick (MovementSystem, HierarchySystem) receives
+   * a delta_time of 0 each frame, so Inspector edits to position aren't
+   * immediately overwritten by simulation. Scene sync and camera
+   * controls are unaffected — they keep receiving real delta_time so
+   * camera fly-through navigation stays usable while paused.
+   */
+  setEditMode(enabled: boolean): void {
+    this.editMode = enabled;
+  }
+
   private onResize = (): void => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    // Guard against transient 0×0 during layout — ResizeObserver can
+    // fire mid-transition before the box has settled.
+    if (width === 0 || height === 0) return;
 
     this.fallbackCamera.aspect = width / height;
     this.fallbackCamera.updateProjectionMatrix();
@@ -153,8 +182,15 @@ export class Renderer {
     const deltaTime = (currentTime - this.lastFrameTime) / 1000;
     this.lastFrameTime = currentTime;
 
+    // In edit mode, hold the simulation still (delta_time = 0) so
+    // Inspector edits aren't immediately overwritten by MovementSystem
+    // on the next tick. sceneManager.update() still gets real deltaTime
+    // — it drives camera fly-through navigation, which should stay
+    // responsive even while the simulation itself is paused.
+    const simDeltaTime = this.editMode ? 0 : deltaTime;
+
     try {
-      this.engine.tick(deltaTime);
+      this.engine.tick(simDeltaTime);
       this.sceneManager.update(deltaTime, BOUNDARY_X, SPAWN_X);
     } catch (e) {
       console.warn("Engine tick error — stopping render loop:", e);
