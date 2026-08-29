@@ -243,6 +243,16 @@ impl EngineWorld {
             transform.rotation.w,
         ])
     }
+    /// Returns whether an entity is currently visible.
+    /// Returns None if the handle is invalid or despawned.
+    pub fn get_visible(&self, handle: u32) -> Option<bool> {
+        let entity = self
+            .entity_handles
+            .get(handle as usize)
+            .and_then(|slot| slot.as_ref())?;
+        let info = self.world.get_component::<EntityInfo>(*entity).ok()?;
+        Some(info.visible)
+    }
     /// Spawns a perspective camera entity.
     /// Returns a u32 handle that JavaScript uses to reference this camera.
     ///
@@ -554,5 +564,37 @@ mod tests {
         assert!((rotation[1] - expected.y).abs() < 0.001);
         assert!((rotation[2] - expected.z).abs() < 0.001);
         assert!((rotation[3] - expected.w).abs() < 0.001);
+    }
+
+    #[test]
+    fn get_visible_returns_true_for_freshly_spawned_entity() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        assert_eq!(world.get_visible(handle), Some(true));
+    }
+
+    #[test]
+    fn get_visible_returns_none_for_invalid_handle() {
+        let world = EngineWorld::new();
+        assert!(world.get_visible(999).is_none());
+    }
+
+    #[test]
+    fn get_visible_reflects_value_written_via_reflection() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        let json = serde_json::json!({
+            "name": "Cube",
+            "enabled": true,
+            "visible": false,
+            "category": "Default",
+            "contexts": ["Universal"]
+        });
+        let rejection = world.set_component_json(handle, "EntityInfo", &json.to_string());
+        assert!(rejection.is_none(), "write should succeed: {:?}", rejection);
+
+        assert_eq!(world.get_visible(handle), Some(false));
     }
 }

@@ -302,6 +302,10 @@ export class SceneManager {
             rotation[3],
           );
         }
+        const visible = this.engine.getVisible(spawned.handle);
+        if (visible !== undefined) {
+          spawned.mesh.visible = visible;
+        }
       }
     }
 

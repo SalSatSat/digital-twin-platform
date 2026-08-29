@@ -149,6 +149,15 @@ export class Engine {
   }
 
   /**
+   * Returns whether an entity is currently visible. Returns undefined
+   * if the handle is invalid or the entity has despawned.
+   */
+  getVisible(handle: number): boolean | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_visible(handle) ?? undefined;
+  }
+
+  /**
    * Advances the ECS by one tick.
    * delta_time is elapsed time in seconds since the last tick.
    */
