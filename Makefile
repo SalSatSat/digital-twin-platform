@@ -94,7 +94,9 @@ build-wasm: ## Rebuild WASM and sync binary to client packages (development)
 	cp $(ENGINE_DIR)/wasm/pkg/dt_engine_wasm.js client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.js
 	rm -f client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.d.ts
 	cp $(ENGINE_DIR)/wasm/pkg/dt_engine_wasm.d.ts client/renderer/node_modules/dt-engine-wasm/dt_engine_wasm.d.ts
-	@echo "Done. Hard refresh the browser."
+	@echo "-> Clearing Vite dependency cache (stale WASM binding cache)..."
+	rm -rf $(CLIENT_DIR)/app/node_modules/.vite
+	@echo "Done. Restart the dev server and hard refresh the browser."
 
 .PHONY: build-client
 build-client: ## Build the frontend for production
