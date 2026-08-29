@@ -58,8 +58,13 @@ export function EntityHierarchyPanel({
     );
   }
 
+  // The Scene Camera (Editor context) is a client-navigation tool, not
+  // an entity the user edits — it's excluded from the hierarchy the
+  // same way it's excluded from being the "runtime" viewpoint.
+  const visibleNodes = nodes.filter((n) => !n.contexts.includes("Editor"));
+
   const childrenOf = (parentHandle: number | null): EntityHierarchyNode[] =>
-    nodes.filter((n) => n.parent_handle === parentHandle);
+    visibleNodes.filter((n) => n.parent_handle === parentHandle);
 
   function toggleCollapsed(handle: number) {
     setCollapsed((prev) => {
