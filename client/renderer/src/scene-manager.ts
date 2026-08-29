@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
-import type { SceneDefinition } from "./scene";
+import type { SceneDefinition, CameraDefinition } from "./scene";
 import { CameraControls } from "./camera-controls";
 
 /**
@@ -10,6 +10,7 @@ interface SpawnedCamera {
   handle: number;
   camera: THREE.PerspectiveCamera;
   isActive: boolean;
+  context: CameraDefinition["context"];
 }
 
 /**
@@ -96,6 +97,7 @@ export class SceneManager {
         handle,
         camera,
         isActive: cameraDef.isActive ?? false,
+        context: cameraDef.context,
       });
 
       if (cameraDef.isActive) {
@@ -161,7 +163,7 @@ export class SceneManager {
   attachControls(): void {
     if (!this.canvas) return;
 
-    const sceneCamera = this.spawnedCameras.find((c) => c.isActive);
+    const sceneCamera = this.getCameraForContext("Editor");
     if (!sceneCamera) return;
 
     this.controls = new CameraControls();
@@ -224,14 +226,33 @@ export class SceneManager {
   }
 
   /**
-   * Returns the active Three.js camera.
-   * Returns null if no scene is loaded or no camera is active.
+   * Returns the Three.js camera for the given render context — the
+   * Editor-context camera while editing, the Runtime-context camera
+   * otherwise. Falls back to a Universal-context camera if no
+   * context-specific camera exists. Returns null if none match.
    */
-  getActiveCamera(): THREE.PerspectiveCamera | null {
-    const activeHandle = this.engine.getActiveCamera();
-    if (activeHandle === undefined) return null;
-    const spawned = this.spawnedCameras.find((c) => c.handle === activeHandle);
-    return spawned?.camera ?? null;
+  getActiveCamera(
+    context: "Editor" | "Runtime",
+  ): THREE.PerspectiveCamera | null {
+    return this.getCameraForContext(context)?.camera ?? null;
+  }
+
+  /**
+   * Finds the camera to use for a given render context. Prefers an
+   * exact context match (tie-broken by isActive, then first spawned),
+   * falling back to a Universal-context camera under the same rule.
+   */
+  private getCameraForContext(
+    context: "Editor" | "Runtime",
+  ): SpawnedCamera | undefined {
+    const exact = this.spawnedCameras.filter((c) => c.context === context);
+    const chosen = exact.find((c) => c.isActive) ?? exact[0];
+    if (chosen) return chosen;
+
+    const universal = this.spawnedCameras.filter(
+      (c) => c.context === "Universal",
+    );
+    return universal.find((c) => c.isActive) ?? universal[0];
   }
 
   /**

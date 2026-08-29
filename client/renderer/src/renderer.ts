@@ -175,7 +175,8 @@ export class Renderer {
   };
 
   private getActiveCamera(): THREE.PerspectiveCamera {
-    return this.sceneManager.getActiveCamera() ?? this.fallbackCamera;
+    const context = this.editMode ? "Editor" : "Runtime";
+    return this.sceneManager.getActiveCamera(context) ?? this.fallbackCamera;
   }
 
   private renderLoop = (currentTime: number): void => {
