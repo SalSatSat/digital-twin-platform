@@ -1,4 +1,5 @@
 import { useComponentField } from "./useComponentField";
+import { NumberField } from "./NumberField";
 import type { FieldRendererProps } from "./FieldRenderer";
 
 interface LocalTransformValue {
@@ -41,12 +42,9 @@ export function LocalTransformField({ engine, handle }: FieldRendererProps) {
               >
                 {axis}
               </span>
-              <input
-                type="number"
+              <NumberField
                 value={value.position[i]}
-                onChange={(e) =>
-                  setPositionAxis(i as 0 | 1 | 2, Number(e.target.value))
-                }
+                onChange={(next) => setPositionAxis(i as 0 | 1 | 2, next)}
                 className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:ring-1 focus:ring-accent focus:outline-none"
               />
             </label>
@@ -65,12 +63,9 @@ export function LocalTransformField({ engine, handle }: FieldRendererProps) {
               >
                 {axis}
               </span>
-              <input
-                type="number"
+              <NumberField
                 value={value.rotation_euler_deg[i]}
-                onChange={(e) =>
-                  setRotationAxis(i as 0 | 1 | 2, Number(e.target.value))
-                }
+                onChange={(next) => setRotationAxis(i as 0 | 1 | 2, next)}
                 className="w-full min-w-0 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:ring-1 focus:ring-accent focus:outline-none"
               />
             </label>

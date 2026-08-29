@@ -1,4 +1,5 @@
 import { useComponentField } from "./useComponentField";
+import { NumberField } from "./NumberField";
 import type { FieldRendererProps } from "./FieldRenderer";
 
 interface PerspectiveFields {
@@ -90,15 +91,12 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
         <>
           <div className="flex items-center justify-between mt-1">
             <span className="text-sm text-text-primary w-20 shrink-0">FOV</span>
-            <input
-              type="number"
+            <NumberField
               value={
                 (value.projection as { Perspective: PerspectiveFields })
                   .Perspective.fov_degrees
               }
-              onChange={(e) =>
-                updatePerspective({ fov_degrees: Number(e.target.value) })
-              }
+              onChange={(next) => updatePerspective({ fov_degrees: next })}
               className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </div>
@@ -106,29 +104,23 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
             <span className="text-sm text-text-primary w-20 shrink-0">
               Near
             </span>
-            <input
-              type="number"
+            <NumberField
               value={
                 (value.projection as { Perspective: PerspectiveFields })
                   .Perspective.near
               }
-              onChange={(e) =>
-                updatePerspective({ near: Number(e.target.value) })
-              }
+              onChange={(next) => updatePerspective({ near: next })}
               className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </div>
           <div className="flex items-center justify-between mt-1">
             <span className="text-sm text-text-primary w-20 shrink-0">Far</span>
-            <input
-              type="number"
+            <NumberField
               value={
                 (value.projection as { Perspective: PerspectiveFields })
                   .Perspective.far
               }
-              onChange={(e) =>
-                updatePerspective({ far: Number(e.target.value) })
-              }
+              onChange={(next) => updatePerspective({ far: next })}
               className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </div>
@@ -139,15 +131,12 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
             <span className="text-sm text-text-primary w-20 shrink-0">
               Size
             </span>
-            <input
-              type="number"
+            <NumberField
               value={
                 (value.projection as { Orthographic: OrthographicFields })
                   .Orthographic.size
               }
-              onChange={(e) =>
-                updateOrthographic({ size: Number(e.target.value) })
-              }
+              onChange={(next) => updateOrthographic({ size: next })}
               className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </div>
@@ -155,29 +144,23 @@ export function CameraField({ engine, handle }: FieldRendererProps) {
             <span className="text-sm text-text-primary w-20 shrink-0">
               Near
             </span>
-            <input
-              type="number"
+            <NumberField
               value={
                 (value.projection as { Orthographic: OrthographicFields })
                   .Orthographic.near
               }
-              onChange={(e) =>
-                updateOrthographic({ near: Number(e.target.value) })
-              }
+              onChange={(next) => updateOrthographic({ near: next })}
               className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </div>
           <div className="flex items-center justify-between mt-1">
             <span className="text-sm text-text-primary w-20 shrink-0">Far</span>
-            <input
-              type="number"
+            <NumberField
               value={
                 (value.projection as { Orthographic: OrthographicFields })
                   .Orthographic.far
               }
-              onChange={(e) =>
-                updateOrthographic({ far: Number(e.target.value) })
-              }
+              onChange={(next) => updateOrthographic({ far: next })}
               className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
             />
           </div>
