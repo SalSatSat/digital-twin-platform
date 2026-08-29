@@ -1,3 +1,4 @@
+use crate::components::EntityInfo;
 use crate::components::physics::Velocity;
 use crate::components::spatial::LocalTransform;
 use crate::systems::System;
@@ -31,10 +32,14 @@ impl System for MovementSystem {
     }
 
     fn run(&mut self, world: &mut World, delta_time: f32) {
-        for (transform, velocity) in world
-            .inner_mut()
-            .query_mut::<(&mut LocalTransform, &Velocity)>()
+        for (transform, velocity, info) in
+            world
+                .inner_mut()
+                .query_mut::<(&mut LocalTransform, &Velocity, &EntityInfo)>()
         {
+            if !info.enabled {
+                continue;
+            }
             transform.position += velocity.value * delta_time;
         }
     }
@@ -168,5 +173,29 @@ mod tests {
         assert!(transform.position.y.is_finite());
         assert!(transform.position.z.is_finite());
         assert_relative_eq!(transform.position.x, 10_000.0 / 60.0, epsilon = 0.1);
+    }
+
+    #[test]
+    fn movement_system_does_not_move_disabled_entity() {
+        // ARRANGE
+        let mut world = World::new();
+        let mut system = MovementSystem::new();
+
+        let entity = world.spawn_bundle(DynamicObjectBundle::new(
+            "Disabled Object",
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+        ));
+        world
+            .get_component_mut::<EntityInfo>(entity)
+            .unwrap()
+            .enabled = false;
+
+        // ACT
+        system.run(&mut world, 1.0);
+
+        // ASSERT — disabled entity did not move despite having Velocity
+        let transform = world.get_component::<LocalTransform>(entity).unwrap();
+        assert_relative_eq!(transform.position.x, 0.0);
     }
 }
