@@ -51,6 +51,7 @@ struct EntityHierarchyNode {
     handle: u32,
     parent_handle: Option<u32>,
     name: String,
+    contexts: Vec<String>,
 }
 
 /// The main entry point exposed to JavaScript.
@@ -451,12 +452,12 @@ impl EngineWorld {
                 // add it explicitly) — no fallback label needed, this
                 // .expect documents that guarantee rather than silently
                 // masking a bundle that stopped attaching it.
-                let name = self
+                let info = self
                     .world
                     .get_component::<EntityInfo>(entity)
-                    .expect("every spawned entity has EntityInfo")
-                    .name
-                    .clone();
+                    .expect("every spawned entity has EntityInfo");
+                let name = info.name.clone();
+                let contexts = info.contexts.clone();
                 let parent_handle = self
                     .world
                     .get_component::<HierarchyNode>(entity)
@@ -467,6 +468,7 @@ impl EngineWorld {
                     handle,
                     parent_handle,
                     name,
+                    contexts,
                 }
             })
             .collect();
@@ -596,5 +598,16 @@ mod tests {
         assert!(rejection.is_none(), "write should succeed: {:?}", rejection);
 
         assert_eq!(world.get_visible(handle), Some(false));
+    }
+
+    #[test]
+    fn list_entity_hierarchy_includes_contexts() {
+        let mut world = EngineWorld::new();
+        world.spawn_camera("Scene Camera", 0.0, 0.0, 0.0, "Editor");
+
+        let json = world.list_entity_hierarchy();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed[0]["contexts"], serde_json::json!(["Editor"]));
     }
 }

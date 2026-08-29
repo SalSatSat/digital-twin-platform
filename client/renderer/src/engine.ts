@@ -38,6 +38,7 @@ export interface EntityHierarchyNode {
   handle: number;
   parent_handle: number | null;
   name: string;
+  contexts: string[];
 }
 
 /**
