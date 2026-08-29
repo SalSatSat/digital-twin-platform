@@ -55,6 +55,13 @@ export class CameraControls {
   // Accumulated movement for smooth fly
   private euler = new THREE.Euler(0, 0, 0, "YXZ");
 
+  // Set whenever user input actually mutates the camera this frame —
+  // look, pan, orbit, zoom, or fly movement. writeBack only fires when
+  // this is true, so an idle camera stops re-asserting its own
+  // transform every frame and racing an Inspector edit to the same
+  // camera in between.
+  private dirty = false;
+
   /**
    * Attaches controls to a canvas element and starts listening for input.
    */
@@ -118,31 +125,42 @@ export class CameraControls {
       this.camera.getWorldDirection(forward);
       right.crossVectors(forward, up).normalize();
 
+      let moved = false;
       if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) {
         this.camera.position.addScaledVector(forward, speed);
+        moved = true;
       }
       if (this.keys.has("KeyS") || this.keys.has("ArrowDown")) {
         this.camera.position.addScaledVector(forward, -speed);
+        moved = true;
       }
       if (this.keys.has("KeyA") || this.keys.has("ArrowLeft")) {
         this.camera.position.addScaledVector(right, -speed);
+        moved = true;
       }
       if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) {
         this.camera.position.addScaledVector(right, speed);
+        moved = true;
       }
       if (this.keys.has("KeyE") || this.keys.has("Space")) {
         this.camera.position.addScaledVector(up, speed);
+        moved = true;
       }
       if (this.keys.has("KeyQ")) {
         this.camera.position.addScaledVector(up, -speed);
+        moved = true;
       }
+      if (moved) this.dirty = true;
     }
 
-    // Write back to ECS
-    if (this.writeBack) {
+    // Write back to ECS — only when something actually changed the
+    // camera this frame, so an idle camera doesn't keep re-asserting
+    // its own transform and racing an Inspector edit to it.
+    if (this.writeBack && this.dirty) {
       const p = this.camera.position;
       const q = this.camera.quaternion;
       this.writeBack(p.x, p.y, p.z, q.x, q.y, q.z, q.w);
+      this.dirty = false;
     }
   }
 
@@ -183,6 +201,7 @@ export class CameraControls {
         Math.min(Math.PI / 2 - 0.01, this.euler.x),
       );
       this.camera.quaternion.setFromEuler(this.euler);
+      this.dirty = true;
     }
 
     if (this.isMiddleMouseDown) {
@@ -195,6 +214,7 @@ export class CameraControls {
 
       this.camera.position.addScaledVector(right, -dx * this.panSensitivity);
       this.camera.position.addScaledVector(up, dy * this.panSensitivity);
+      this.dirty = true;
     }
 
     if (this.isAltLeftMouseDown) {
@@ -213,6 +233,7 @@ export class CameraControls {
       this.camera.position.copy(this.orbitTarget).add(offset);
       this.camera.lookAt(this.orbitTarget);
       this.euler.setFromQuaternion(this.camera.quaternion, "YXZ");
+      this.dirty = true;
     }
   };
 
@@ -224,6 +245,7 @@ export class CameraControls {
     this.camera.getWorldDirection(forward);
     const delta = e.deltaY > 0 ? -this.zoomSpeed : this.zoomSpeed;
     this.camera.position.addScaledVector(forward, delta);
+    this.dirty = true;
   };
 
   private onContextMenu = (e: Event): void => {
