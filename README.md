@@ -256,30 +256,36 @@ _To be determined_
 | Phase 10 | Basic scene — Scene Camera, Runtime Camera, lighting                                                                                                                   | Phase 9    |
 | Phase 11 | Camera controls — Free Camera navigation                                                                                                                               | Phase 10   |
 | Phase 12 | Entity hierarchy — LocalTransform/WorldTransform propagation, parent/child relationships via `set_parent`/`remove_parent`                                              | Phase 8    |
-| Phase 13 | Runtime Editor — UI shell, Hierarchy panel, generic Inspector, registry validation                                                     | Phase 12   |
+| Phase 13 | Runtime Editor — UI shell, Hierarchy panel, generic Inspector, registry validation                                                                                     | Phase 12   |
+| Phase 14 | Editor Functional Wiring — Inspector edits reflected in simulation (rotation/velocity/camera/enabled/visible), edit-mode pause (deltatime hold), editor visibility toggle with URL state, Editor/Runtime camera context selection | Phase 13   |
 
 **Upcoming**
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 14 | Editor Functional Wiring — Inspector edits reflected in simulation (rotation/velocity/camera/enabled/visible), edit-mode pause (deltatime hold), editor visibility toggle with URL state, Project/Console-style panel tabs | Phase 13   |
-| Phase 15 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 14   |
-| Phase 16 | GLB model loading at runtime                                                                                                           | Phase 15   |
-| Phase 17 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 21)                                            | Phase 13   |
-| Phase 18 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 16   |
-| Phase 19 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 18   |
-| Phase 20 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 19   |
-| Phase 21 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 17's debug metrics                   | Phase 20   |
-| Phase 22 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 20   |
-| Phase 23 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 22   |
+| Phase 15 | Infinite Grid — Unity-style infinite reference grid rendered in the Editor-context viewport                                            | Phase 14   |
+| Phase 16 | View-Angle Camera Gizmo — quick-view camera presets (top/bottom/left/right/front/back, perspective/orthographic toggle)                | Phase 14   |
+| Phase 17 | Viewport Click-to-Select — click an entity in the 3D viewport to select it (raycasting against spawned meshes), syncing with the Hierarchy panel's existing selection state | Phase 14   |
+| Phase 18 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport                            | Phase 17   |
+| Phase 19 | Transform Gizmo — draggable gizmo attached to the selected entity for direct position/rotation manipulation in the viewport            | Phase 17   |
+| Phase 20 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 14   |
+| Phase 21 | GLB model loading at runtime                                                                                                           | Phase 20   |
+| Phase 22 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 26)                                            | Phase 13   |
+| Phase 23 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 21   |
+| Phase 24 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 23   |
+| Phase 25 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 24   |
+| Phase 26 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 22's debug metrics                   | Phase 25   |
+| Phase 27 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 25   |
+| Phase 28 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 27   |
+| Phase 29 | Editor Panel Tabs — Project/Console-style panel tabs (Unity-inspired); deferred from Phase 14 pending further design (tab content, panel placement). Tentatively expects Event Bus for Console-style log content and GLB loading for Project-style asset content — to be confirmed once actually scoped | Phase 20, Phase 21 |
 
 **Not yet scheduled**
 
 True concurrent collaborative editing — multiple users editing the same
 entity simultaneously with conflict resolution (CRDT/OT-style) — is
-deliberately not given a phase number. Phase 23 ships an eventually-consistent
+deliberately not given a phase number. Phase 28 ships an eventually-consistent
 model (changes are visible to other users on next sync, not live). Whether
-true concurrent editing is ever needed will be reassessed after Phase 23
+true concurrent editing is ever needed will be reassessed after Phase 28
 ships, based on how the platform is actually used with real teams.
 
 > This roadmap is a living document. New phases may be added as requirements evolve.
