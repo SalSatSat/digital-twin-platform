@@ -31,7 +31,7 @@ export class WebGPUBackend implements RenderBackend {
   }
 
   setSize(width: number, height: number): void {
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(width, height, false);
   }
 
   setPixelRatio(ratio: number): void {

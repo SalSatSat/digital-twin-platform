@@ -23,7 +23,12 @@ export class WebGLBackend implements RenderBackend {
   }
 
   setSize(width: number, height: number): void {
-    this.renderer.setSize(width, height);
+    // false = don't let Three.js set canvas.style.width/height directly.
+    // Without this, Three defaults to sizing the canvas's CSS box to
+    // match window.innerWidth/innerHeight exactly — which overflows its
+    // actual flex container (the middle viewport panel is narrower than
+    // the full window once the Hierarchy/Inspector panels take space).
+    this.renderer.setSize(width, height, false);
   }
 
   setPixelRatio(ratio: number): void {

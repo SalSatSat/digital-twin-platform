@@ -386,6 +386,7 @@ export class SceneManager {
   }
 
   private getAspect(): number {
-    return window.innerWidth / window.innerHeight;
+    if (!this.canvas || this.canvas.clientHeight === 0) return 1;
+    return this.canvas.clientWidth / this.canvas.clientHeight;
   }
 }

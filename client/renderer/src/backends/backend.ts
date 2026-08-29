@@ -22,6 +22,10 @@ export interface RenderBackend {
   /**
    * Updates the backend's output size.
    * Call when the canvas is resized.
+   *
+   * Only updates the internal render resolution — does not touch the
+   * canvas element's CSS size, which is controlled by its container
+   * via ordinary layout (width: 100%; height: 100%).
    */
   setSize(width: number, height: number): void;
 
