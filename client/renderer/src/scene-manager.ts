@@ -293,6 +293,15 @@ export class SceneManager {
         }
       } else {
         spawned.mesh.position.set(position[0], position[1], position[2]);
+        const rotation = this.engine.getRotation(spawned.handle);
+        if (rotation) {
+          spawned.mesh.quaternion.set(
+            rotation[0],
+            rotation[1],
+            rotation[2],
+            rotation[3],
+          );
+        }
       }
     }
 

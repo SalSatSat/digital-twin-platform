@@ -139,6 +139,16 @@ export class Engine {
   }
 
   /**
+   * Returns the world-space rotation of an entity as a quaternion
+   * [x, y, z, w]. Returns undefined if the handle is invalid or the
+   * entity has no WorldTransform component.
+   */
+  getRotation(handle: number): Float32Array | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_rotation(handle) ?? undefined;
+  }
+
+  /**
    * Advances the ECS by one tick.
    * delta_time is elapsed time in seconds since the last tick.
    */
