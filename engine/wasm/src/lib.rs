@@ -162,8 +162,7 @@ impl EngineWorld {
     /// invalid target is normal usage, not a bug), so they're modeled
     /// as data the caller branches on rather than control-flow
     /// interruptions. Also: Result<(), JsValue> was tested here and
-    /// found to break WASM instantiation in this project's toolchain —
-    /// see commit history around Phase 13 for the investigation.
+    /// found to break WASM instantiation in this project's toolchain.
     pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> u8 {
         let Some(child) = self.resolve_handle(child_handle) else {
             return 1;
@@ -417,8 +416,7 @@ impl EngineWorld {
     // of EngineWorld's own handle table + HierarchyNode into something
     // the Entity Hierarchy panel can render as a tree. Lives here
     // rather than a separate module because it depends on
-    // entity_handles, a private EngineWorld field — see Phase 13
-    // design discussion.
+    // entity_handles, a private EngineWorld field.
 
     /// Returns every live entity as a flat list, JSON-encoded, for the
     /// Entity Hierarchy panel to reconstruct into a tree client-side.

@@ -20,7 +20,7 @@ const SPAWN_X = -3.0;
  * - The render loop (requestAnimationFrame)
  * - Window resize and keyboard handling
  * - Selecting and using the active camera each frame
- * - The Editor-context reference grid (Phase 15) — a rendering aid,
+ * - The Editor-context reference grid (a rendering aid)
  *   not ECS scene content, so it lives here rather than SceneManager
  *
  * The Renderer is NOT responsible for:

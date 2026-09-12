@@ -9,7 +9,7 @@ import { createGridMaterialWebGPU } from "./grid-material-webgpu";
  * A large, fixed-size plane on the Y=0 world plane, shaded by a
  * procedural grid shader (GLSL for the WebGL backend, TSL for the
  * WebGPU backend — the two render pipelines are not material-
- * compatible with each other; see the Phase 15 scoping discussion).
+ * compatible with each other).
  * The plane itself is finite (GRID_CONFIG.planeSize) but the shader
  * fades lines out well before the edge, so the edge is never visible
  * — see updateGridPosition() for how it stays centered under the
@@ -34,7 +34,7 @@ export function createGridMesh(isWebGPU: boolean): THREE.Mesh {
   const mesh = new THREE.Mesh(geometry, material as THREE.Material);
   mesh.name = "EditorReferenceGrid";
   // Purely a visual aid, not part of the ECS scene — never a raycast
-  // target (relevant once Phase 17's click-to-select lands).
+  // target (relevant once click-to-select lands).
   mesh.raycast = () => {};
   return mesh;
 }

@@ -1,6 +1,6 @@
 /**
  * Shared configuration for the Editor-context infinite reference grid
- * (Phase 15). Fixed constants for now — not user-configurable. Revisit
+ * Fixed constants for now — not user-configurable. Revisit
  * if/when a broader editor-settings/theme system is introduced.
  */
 export const GRID_CONFIG = {
@@ -35,10 +35,10 @@ export const GRID_CONFIG = {
   /** Axis line width multiplier — thicker than major lines. */
   axisLineWidth: 2.5,
 
-  /** Distance from camera at which fade begins (full opacity inside
-   *  this radius). Tuned against the scene's camera far plane (1000),
-   *  not just the grid's own scale — see Phase 15 fade-distance
-   *  discussion. */
+  /**
+  * Distance from camera at which fade begins (full opacity inside
+  *  this radius). Tuned against the scene's camera far plane (1000),
+  *  not just the grid's own scale. */
   fadeStart: 250.0,
 
   /** Distance from camera at which the grid is fully faded out. */

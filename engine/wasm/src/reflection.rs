@@ -2,8 +2,7 @@
 //!
 //! Lives at the WASM boundary (not in engine/core) because it's purely
 //! a translation layer between ECS storage and JSON for JavaScript —
-//! it has no gameplay logic of its own. See Phase 13 design discussion
-//! for the full reasoning behind each choice below.
+//! it has no gameplay logic of its own.
 
 use dt_engine_core::components::{
     CameraComponent, EntityInfo, LocalTransform, ProjectionType, Velocity,
@@ -177,7 +176,7 @@ fn velocity_from_json(
 
 // ─── LocalTransform ─────────────────────────────────────────────────────
 // LocalTransformView exists because the wire shape (Euler degrees) must
-// differ from the storage shape (Quat) — see Phase 13 design discussion.
+// differ from the storage shape (Quat).
 // This is the pattern to follow for any future component with the same
 // need; LocalTransform itself is untouched, no serde derive added to it.
 
@@ -308,8 +307,7 @@ fn camera_from_json(
 // carry one).
 //
 // category/contexts also get validated against World::registry before
-// write — this is the "registry validation" HANDOFF.md flagged as
-// relevant to Phase 13, now concretely implemented.
+// write.
 
 /// Write-only shape for EntityInfo. Deliberately excludes `id` — see
 /// module doc comment above for why omission (not a runtime check) is
