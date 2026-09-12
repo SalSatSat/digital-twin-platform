@@ -48,7 +48,7 @@ export class CameraControls {
   // Settings
   flySpeed = 5.0;
   lookSensitivity = 0.002;
-  panSensitivity = 0.005;
+  panSensitivity = 0.01;
   zoomSpeed = 0.5;
   orbitSensitivity = 0.005;
 
