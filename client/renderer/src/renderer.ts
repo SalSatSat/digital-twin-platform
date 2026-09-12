@@ -6,6 +6,7 @@ import type { SceneDefinition } from "./scene";
 import type { RenderBackend } from "./backends/backend";
 import { WebGLBackend } from "./backends/webgl";
 import { WebGPUBackend } from "./backends/webgpu";
+import { createGridMesh, updateGridPosition } from "./grid/grid-mesh";
 
 const BOUNDARY_X = 4.0;
 const SPAWN_X = -3.0;
@@ -19,6 +20,8 @@ const SPAWN_X = -3.0;
  * - The render loop (requestAnimationFrame)
  * - Window resize and keyboard handling
  * - Selecting and using the active camera each frame
+ * - The Editor-context reference grid (Phase 15) — a rendering aid,
+ *   not ECS scene content, so it lives here rather than SceneManager
  *
  * The Renderer is NOT responsible for:
  * - What entities exist in the scene
@@ -32,6 +35,7 @@ export class Renderer {
   private sceneManager: SceneManager;
   private canvas: HTMLCanvasElement;
   private engine: Engine;
+  private gridMesh: THREE.Mesh;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -43,6 +47,7 @@ export class Renderer {
   // tick receives a delta_time of 0 (holding physics/movement still),
   // while the scene sync (mesh transforms, camera controls) continues
   // to receive real delta_time so camera navigation stays responsive.
+  // Also controls the Editor-context reference grid's visibility.
   private editMode: boolean = false;
 
   private resizeObserver: ResizeObserver;
@@ -72,6 +77,13 @@ export class Renderer {
 
     this.backend.setPixelRatio(window.devicePixelRatio);
     this.backend.setSize(canvas.clientWidth, canvas.clientHeight);
+
+    // Grid material variant must match the chosen backend — GLSL
+    // ShaderMaterial only runs on WebGLRenderer, TSL/NodeMaterial only
+    // on WebGPURenderer. Hidden by default; shown only in edit mode.
+    this.gridMesh = createGridMesh(hasWebGPU);
+    this.gridMesh.visible = this.editMode;
+    this.threeScene.add(this.gridMesh);
 
     // ResizeObserver, not window "resize" — the canvas's own size can
     // change from layout shifts (e.g. side panels appearing/disappearing
@@ -134,6 +146,10 @@ export class Renderer {
     this.resizeObserver.disconnect();
     window.removeEventListener("keydown", this.onKeyDown);
     this.sceneManager.unloadScene();
+    this.gridMesh.geometry.dispose();
+    if (this.gridMesh.material instanceof THREE.Material) {
+      this.gridMesh.material.dispose();
+    }
     this.backend.dispose();
   }
 
@@ -144,10 +160,12 @@ export class Renderer {
    * a delta_time of 0 each frame, so Inspector edits to position aren't
    * immediately overwritten by simulation. Scene sync and camera
    * controls are unaffected — they keep receiving real delta_time so
-   * camera fly-through navigation stays usable while paused.
+   * camera fly-through navigation stays usable while paused. Also
+   * toggles the reference grid's visibility.
    */
   setEditMode(enabled: boolean): void {
     this.editMode = enabled;
+    this.gridMesh.visible = enabled;
   }
 
   private onResize = (): void => {
@@ -199,7 +217,12 @@ export class Renderer {
       return;
     }
 
-    this.backend.render(this.threeScene, this.getActiveCamera());
+    const activeCamera = this.getActiveCamera();
+    if (this.editMode) {
+      updateGridPosition(this.gridMesh, activeCamera.position);
+    }
+
+    this.backend.render(this.threeScene, activeCamera);
     this.animationFrameId = requestAnimationFrame(this.renderLoop);
   };
 }
