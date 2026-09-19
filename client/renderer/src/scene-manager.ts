@@ -1,16 +1,55 @@
 import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
 import type { SceneDefinition, CameraDefinition } from "./scene";
-import { CameraControls } from "./camera-controls";
+import { CameraControls } from "./camera/camera-controls";
+import { CameraTween } from "./camera/camera-tween";
+import { computePresetTransform } from "./gizmo/view-presets";
+import type { ViewPreset } from "./gizmo/view-presets";
+
+/**
+ * The Three.js camera types a spawned camera entity can resolve to,
+ * depending on its ECS ProjectionType variant (Perspective or
+ * Orthographic — see engine/core/src/components/camera.rs).
+ */
+type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
+
+/**
+ * Shape of the "Camera" component as returned by
+ * Engine.getComponentJson(handle, "Camera") — mirrors the Rust
+ * ProjectionType enum's serde (externally-tagged) JSON encoding.
+ * Kept in sync by hand with camera.rs and CameraField.tsx, which
+ * parses the identical shape for the Inspector.
+ */
+interface PerspectiveProjection {
+  Perspective: { fov_degrees: number; near: number; far: number };
+}
+interface OrthographicProjection {
+  Orthographic: { size: number; near: number; far: number };
+}
+type ProjectionJson = PerspectiveProjection | OrthographicProjection;
+interface CameraComponentJson {
+  projection: ProjectionJson;
+}
+
+// Fallback projection used if a camera's "Camera" component is
+// missing or fails to parse — mirrors ProjectionType::default_perspective().
+const DEFAULT_PROJECTION: ProjectionJson = {
+  Perspective: { fov_degrees: 75, near: 0.1, far: 1000 },
+};
 
 /**
  * Tracks a spawned camera — its ECS handle and Three.js camera.
  */
 interface SpawnedCamera {
   handle: number;
-  camera: THREE.PerspectiveCamera;
+  camera: SceneCamera;
   isActive: boolean;
   context: CameraDefinition["context"];
+  // Raw JSON of this camera's last-read "Camera" component, used to
+  // cheaply detect projection changes (e.g. an Inspector edit
+  // switching Perspective <-> Orthographic) each frame without a
+  // deep comparison.
+  lastProjectionJson: string;
 }
 
 /**
@@ -40,8 +79,16 @@ export class SceneManager {
   private spawnedLights: THREE.Light[] = [];
   private activeSceneDef: SceneDefinition | null = null;
   private controls: CameraControls | null = null;
+  // Handle of the camera CameraControls is currently driving, so that
+  // if that specific camera's Three.js object gets rebuilt mid-session
+  // (a projection change), controls can be re-pointed at the new one.
+  private controlledCameraHandle: number | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private engine: Engine;
+  // In-progress view-gizmo camera snap, if any — see snapToPreset()
+  // and the tween-stepping block in update().
+  private activeTween: CameraTween | null = null;
+  private tweenHandle: number | null = null;
 
   constructor(
     engine: Engine,
@@ -74,12 +121,10 @@ export class SceneManager {
         cameraDef.context,
       );
 
-      const fov = this.engine.getCameraFov(handle) ?? 75;
-      const camera = new THREE.PerspectiveCamera(
-        fov,
+      const projectionJson = this.engine.getComponentJson(handle, "Camera");
+      const camera = this.buildCameraFromProjection(
+        this.parseProjection(projectionJson),
         this.getAspect(),
-        0.1,
-        1000,
       );
 
       const transform = this.engine.getCameraTransform(handle);
@@ -98,6 +143,7 @@ export class SceneManager {
         camera,
         isActive: cameraDef.isActive ?? false,
         context: cameraDef.context,
+        lastProjectionJson: projectionJson ?? "",
       });
 
       if (cameraDef.isActive) {
@@ -168,6 +214,7 @@ export class SceneManager {
 
     this.controls = new CameraControls();
     this.controls.setCamera(sceneCamera.camera);
+    this.controlledCameraHandle = sceneCamera.handle;
     this.controls.setWriteBack((x, y, z, rx, ry, rz, rw) => {
       this.engine.setCameraTransform(
         sceneCamera.handle,
@@ -180,7 +227,103 @@ export class SceneManager {
         rw,
       );
     });
+    this.controls.setOnUserInput(() => this.cancelTween());
     this.controls.attach(this.canvas);
+  }
+
+  /**
+   * Smoothly moves the Editor camera to look at the world origin from
+   * the given preset's side — called when the view gizmo's onAxisSelected
+   * fires. Does nothing if there's no Editor camera to move.
+   *
+   * Any manual input on CameraControls cancels an in-progress snap
+   * (see attachControls()'s setOnUserInput hook above) so a drag
+   * always wins over a tween still finishing.
+   */
+  snapToPreset(preset: ViewPreset, distance = 10): void {
+    const spawned = this.getCameraForContext("Editor");
+    if (!spawned) return;
+
+    const { position, quaternion } = computePresetTransform(preset, distance);
+    this.activeTween = new CameraTween(
+      spawned.camera.position,
+      spawned.camera.quaternion,
+      position,
+      quaternion,
+    );
+    this.tweenHandle = spawned.handle;
+  }
+
+  /**
+   * Flips the Editor camera between Perspective and Orthographic —
+   * called when the view gizmo's center cube is clicked. Preserves
+   * near/far; the entered mode's other parameter (fov_degrees or
+   * size) resets to ProjectionType's own default, since the two
+   * projections don't share a parameter to preserve across the flip.
+   *
+   * Reuses the exact same reflection path the Inspector's Projection
+   * dropdown already writes through (engine.setComponentJson), and
+   * CameraComponent's only field is `projection` (see camera.rs), so
+   * this JSON is the complete component — nothing else to preserve.
+   * The live projection-change poll already in update() picks this up
+   * and rebuilds the Three.js camera the same way an Inspector edit
+   * would, so no extra wiring is needed here beyond the write itself.
+   */
+  toggleEditorCameraProjection(): void {
+    const spawned = this.getCameraForContext("Editor");
+    if (!spawned) return;
+
+    const projectionJson = this.engine.getComponentJson(
+      spawned.handle,
+      "Camera",
+    );
+    const projection = this.parseProjection(projectionJson);
+
+    const next: ProjectionJson =
+      "Perspective" in projection
+        ? {
+            Orthographic: {
+              size: 10,
+              near: projection.Perspective.near,
+              far: projection.Perspective.far,
+            },
+          }
+        : {
+            Perspective: {
+              fov_degrees: 75,
+              near: projection.Orthographic.near,
+              far: projection.Orthographic.far,
+            },
+          };
+
+    this.engine.setComponentJson(
+      spawned.handle,
+      "Camera",
+      JSON.stringify({ projection: next }),
+    );
+  }
+
+  /**
+   * Cancels an in-progress camera-preset snap, if any, and — if it
+   * was driving the camera CameraControls is attached to — resyncs
+   * CameraControls' internal `euler` state from the camera's current
+   * (mid-tween) orientation. Without that resync, the next mouse-look
+   * drag would compute from a stale euler and the view would jump;
+   * see CameraControls.notifyInput()'s doc comment for the full story.
+   * Guarded on activeTween being non-null so this never runs (and
+   * never touches `euler`) during ordinary dragging with no tween in
+   * flight — see the comment on that early return below.
+   */
+  private cancelTween(): void {
+    if (!this.activeTween) return;
+    if (this.tweenHandle === this.controlledCameraHandle) {
+      const spawned = this.spawnedCameras.find(
+        (c) => c.handle === this.tweenHandle,
+      );
+      if (spawned) this.controls?.setCamera(spawned.camera);
+    }
+    this.activeTween = null;
+    this.tweenHandle = null;
   }
 
   /**
@@ -189,6 +332,9 @@ export class SceneManager {
   detachControls(): void {
     this.controls?.detach();
     this.controls = null;
+    this.controlledCameraHandle = null;
+    this.activeTween = null;
+    this.tweenHandle = null;
   }
 
   /**
@@ -231,9 +377,7 @@ export class SceneManager {
    * otherwise. Falls back to a Universal-context camera if no
    * context-specific camera exists. Returns null if none match.
    */
-  getActiveCamera(
-    context: "Editor" | "Runtime",
-  ): THREE.PerspectiveCamera | null {
+  getActiveCamera(context: "Editor" | "Runtime"): SceneCamera | null {
     return this.getCameraForContext(context)?.camera ?? null;
   }
 
@@ -353,8 +497,69 @@ export class SceneManager {
       this.spawnedEntities.push({ handle, name, mesh });
     }
 
-    // Sync camera transforms from ECS
+    // Step any in-progress camera-preset snap (from the view gizmo)
+    // and apply it directly, then write it back to the ECS the same
+    // way CameraControls does — writing to ECS as well (rather than
+    // just mutating the Three.js camera) keeps the ECS authoritative
+    // even mid-tween, e.g. if the Inspector happens to be open on
+    // this camera's LocalTransform while it's snapping.
+    if (this.activeTween && this.tweenHandle !== null) {
+      const { position, quaternion, done } = this.activeTween.step(deltaTime);
+      this.engine.setCameraTransform(
+        this.tweenHandle,
+        position.x,
+        position.y,
+        position.z,
+        quaternion.x,
+        quaternion.y,
+        quaternion.z,
+        quaternion.w,
+      );
+
+      const spawned = this.spawnedCameras.find(
+        (c) => c.handle === this.tweenHandle,
+      );
+      if (spawned) {
+        spawned.camera.position.copy(position);
+        spawned.camera.quaternion.copy(quaternion);
+      }
+
+      if (done) {
+        // Resync CameraControls' euler from the final orientation —
+        // see cancelTween()'s doc comment for why this matters.
+        if (spawned && this.tweenHandle === this.controlledCameraHandle) {
+          this.controls?.setCamera(spawned.camera);
+        }
+        this.activeTween = null;
+        this.tweenHandle = null;
+      }
+    }
+
+    // Sync camera transforms and projections from ECS. Projection is
+    // checked every frame (cheap string compare against the last-seen
+    // JSON) so an Inspector edit that flips a camera between
+    // Perspective and Orthographic — or tweaks its fov/size/near/far —
+    // takes effect live, not just at scene load.
     for (const spawned of this.spawnedCameras) {
+      const projectionJson = this.engine.getComponentJson(
+        spawned.handle,
+        "Camera",
+      );
+      if (projectionJson && projectionJson !== spawned.lastProjectionJson) {
+        const rebuilt = this.buildCameraFromProjection(
+          this.parseProjection(projectionJson),
+          this.getAspect(),
+        );
+        rebuilt.position.copy(spawned.camera.position);
+        rebuilt.quaternion.copy(spawned.camera.quaternion);
+        spawned.camera = rebuilt;
+        spawned.lastProjectionJson = projectionJson;
+
+        if (spawned.handle === this.controlledCameraHandle) {
+          this.controls?.setCamera(rebuilt);
+        }
+      }
+
       const transform = this.engine.getCameraTransform(spawned.handle);
       if (transform) {
         spawned.camera.position.set(transform[0], transform[1], transform[2]);
@@ -374,7 +579,18 @@ export class SceneManager {
   onResize(): void {
     const aspect = this.getAspect();
     for (const spawned of this.spawnedCameras) {
-      spawned.camera.aspect = aspect;
+      if (spawned.camera instanceof THREE.OrthographicCamera) {
+        // Orthographic "size" is the half-height (see
+        // buildOrthographicCamera) — recovered here from the current
+        // `top` rather than tracked separately, since top === size by
+        // construction and never changes except on a projection
+        // rebuild. Only left/right need to change with aspect.
+        const halfHeight = spawned.camera.top;
+        spawned.camera.left = -halfHeight * aspect;
+        spawned.camera.right = halfHeight * aspect;
+      } else {
+        spawned.camera.aspect = aspect;
+      }
       spawned.camera.updateProjectionMatrix();
     }
   }
@@ -384,6 +600,63 @@ export class SceneManager {
    */
   get sceneName(): string | null {
     return this.activeSceneDef?.name ?? null;
+  }
+
+  /**
+   * Parses a "Camera" component's JSON into its ProjectionJson shape.
+   * Falls back to a default perspective projection if the JSON is
+   * missing, malformed, or lacks a `projection` field — this should
+   * only happen for a camera entity missing its Camera component,
+   * which spawnCamera() should never produce, but the fallback keeps
+   * loadScene()/update() from throwing on unexpected data.
+   */
+  private parseProjection(json: string | undefined): ProjectionJson {
+    if (json) {
+      try {
+        const parsed = JSON.parse(json) as CameraComponentJson;
+        if (parsed.projection) return parsed.projection;
+      } catch {
+        // Falls through to the default below.
+      }
+    }
+    return DEFAULT_PROJECTION;
+  }
+
+  /**
+   * Constructs the Three.js camera matching a ProjectionJson variant.
+   */
+  private buildCameraFromProjection(
+    projection: ProjectionJson,
+    aspect: number,
+  ): SceneCamera {
+    if ("Perspective" in projection) {
+      const { fov_degrees, near, far } = projection.Perspective;
+      return new THREE.PerspectiveCamera(fov_degrees, aspect, near, far);
+    }
+    const { size, near, far } = projection.Orthographic;
+    return this.buildOrthographicCamera(size, aspect, near, far);
+  }
+
+  /**
+   * Builds an orthographic camera from the ECS's `size` parameter
+   * (half-height of the view volume in world units — see
+   * ProjectionType::Orthographic in camera.rs) and the current aspect
+   * ratio.
+   */
+  private buildOrthographicCamera(
+    size: number,
+    aspect: number,
+    near: number,
+    far: number,
+  ): THREE.OrthographicCamera {
+    return new THREE.OrthographicCamera(
+      -size * aspect,
+      size * aspect,
+      size,
+      -size,
+      near,
+      far,
+    );
   }
 
   private createMesh(color: number): THREE.Mesh {

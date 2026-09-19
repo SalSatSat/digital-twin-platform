@@ -7,9 +7,12 @@ import type { RenderBackend } from "./backends/backend";
 import { WebGLBackend } from "./backends/webgl";
 import { WebGPUBackend } from "./backends/webgpu";
 import { createGridMesh, updateGridPosition } from "./grid/grid-mesh";
+import { ViewGizmo } from "./gizmo/view-gizmo";
 
 const BOUNDARY_X = 4.0;
 const SPAWN_X = -3.0;
+
+type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
 /**
  * Owns the Three.js scene graph, render backend, and render loop.
@@ -22,6 +25,7 @@ const SPAWN_X = -3.0;
  * - Selecting and using the active camera each frame
  * - The Editor-context reference grid (a rendering aid)
  *   not ECS scene content, so it lives here rather than SceneManager
+ * - The Editor-context view gizmo (also a rendering aid, same reasoning)
  *
  * The Renderer is NOT responsible for:
  * - What entities exist in the scene
@@ -36,6 +40,7 @@ export class Renderer {
   private canvas: HTMLCanvasElement;
   private engine: Engine;
   private gridMesh: THREE.Mesh;
+  private gizmo: ViewGizmo;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -52,7 +57,12 @@ export class Renderer {
 
   private resizeObserver: ResizeObserver;
 
-  constructor(canvas: HTMLCanvasElement, engine: Engine) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    gizmoCanvas: HTMLCanvasElement,
+    gizmoLabel: HTMLElement,
+    engine: Engine,
+  ) {
     this.canvas = canvas;
     this.engine = engine;
     this.threeScene = new THREE.Scene();
@@ -84,6 +94,19 @@ export class Renderer {
     this.gridMesh = createGridMesh(hasWebGPU);
     this.gridMesh.visible = this.editMode;
     this.threeScene.add(this.gridMesh);
+
+    // The gizmo always renders with its own plain WebGLRenderer,
+    // independent of hasWebGPU — see ViewGizmo's doc comment for why.
+    // Its canvas's own visibility (shown only in edit mode) is owned
+    // by EngineView.tsx via the editMode prop, not here — same split
+    // as the main canvas itself.
+    this.gizmo = new ViewGizmo(gizmoCanvas, gizmoLabel);
+    this.gizmo.setOnPresetSelected((preset) => {
+      this.sceneManager.snapToPreset(preset);
+    });
+    this.gizmo.setOnToggleProjection(() => {
+      this.sceneManager.toggleEditorCameraProjection();
+    });
 
     // ResizeObserver, not window "resize" — the canvas's own size can
     // change from layout shifts (e.g. side panels appearing/disappearing
@@ -150,6 +173,7 @@ export class Renderer {
     if (this.gridMesh.material instanceof THREE.Material) {
       this.gridMesh.material.dispose();
     }
+    this.gizmo.dispose();
     this.backend.dispose();
   }
 
@@ -180,6 +204,7 @@ export class Renderer {
 
     this.sceneManager.onResize();
     this.backend.setSize(width, height);
+    this.gizmo.resize();
   };
 
   private onKeyDown = (event: KeyboardEvent): void => {
@@ -192,7 +217,7 @@ export class Renderer {
     }
   };
 
-  private getActiveCamera(): THREE.PerspectiveCamera {
+  private getActiveCamera(): SceneCamera {
     const context = this.editMode ? "Editor" : "Runtime";
     return this.sceneManager.getActiveCamera(context) ?? this.fallbackCamera;
   }
@@ -220,6 +245,10 @@ export class Renderer {
     const activeCamera = this.getActiveCamera();
     if (this.editMode) {
       updateGridPosition(this.gridMesh, activeCamera.position);
+      this.gizmo.update(
+        activeCamera.quaternion,
+        activeCamera instanceof THREE.OrthographicCamera,
+      );
     }
 
     this.backend.render(this.threeScene, activeCamera);
