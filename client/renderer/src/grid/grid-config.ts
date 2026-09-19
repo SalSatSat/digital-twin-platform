@@ -17,15 +17,15 @@ export const GRID_CONFIG = {
   majorInterval: 10,
 
   /** Minor line color (RGB, 0-1). */
-  minorColor: [0.35, 0.35, 0.35] as [number, number, number],
+  minorColor: [0.05, 0.05, 0.05] as [number, number, number],
 
   /** Major line color — brighter than minor, marks each 10x10 cell
    *  boundary. Paired with majorLineWidth below for extra emphasis. */
-  majorColor: [0.75, 0.75, 0.75] as [number, number, number],
+  majorColor: [0.25, 0.25, 0.25] as [number, number, number],
 
   /** Line-width multiplier for major lines (minor lines always use
    *  1.0, i.e. a crisp ~1px line regardless of zoom/angle). */
-  majorLineWidth: 2.0,
+  majorLineWidth: 1.25,
 
   /** Origin axis colors — Unity/Blender convention: X red, Z blue.
    *  These are the most visually prominent lines on the grid. */
@@ -33,12 +33,12 @@ export const GRID_CONFIG = {
   zAxisColor: [0.25, 0.45, 0.95] as [number, number, number],
 
   /** Axis line width multiplier — thicker than major lines. */
-  axisLineWidth: 2.5,
+  axisLineWidth: 1.5,
 
   /**
-  * Distance from camera at which fade begins (full opacity inside
-  *  this radius). Tuned against the scene's camera far plane (1000),
-  *  not just the grid's own scale. */
+   * Distance from camera at which fade begins (full opacity inside
+   *  this radius). Tuned against the scene's camera far plane (1000),
+   *  not just the grid's own scale. */
   fadeStart: 250.0,
 
   /** Distance from camera at which the grid is fully faded out. */
