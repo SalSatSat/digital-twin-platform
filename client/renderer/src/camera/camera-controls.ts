@@ -1,5 +1,7 @@
 import * as THREE from "three/webgpu";
 
+type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
+
 /**
  * Write-back callback — called each frame with the camera's
  * current position and rotation so the ECS can be updated.
@@ -24,13 +26,21 @@ type WriteBackFn = (
  * - Scroll wheel           — zoom (dolly forward/back)
  * - Alt + left mouse drag  — orbit around target point
  *
- * Controls operate on a Three.js PerspectiveCamera and write
- * the resulting transform back to the ECS via a callback.
+ * Controls operate on a Three.js PerspectiveCamera or
+ * OrthographicCamera and write the resulting transform back to the
+ * ECS via a callback.
  */
 export class CameraControls {
-  private camera: THREE.PerspectiveCamera | null = null;
+  private camera: SceneCamera | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private writeBack: WriteBackFn | null = null;
+  // Fired whenever the user actually provides input this frame —
+  // before that input is applied to the camera. Used by SceneManager
+  // to cancel an in-progress view-gizmo tween the instant the user
+  // takes back manual control, so the two never fight over the
+  // camera. Firing *before* the input is applied (not after) matters
+  // for the look/rotate case specifically — see onMouseMove below.
+  private onUserInput: (() => void) | null = null;
 
   // Mouse state
   private isRightMouseDown = false;
@@ -94,7 +104,7 @@ export class CameraControls {
   /**
    * Sets the camera to control.
    */
-  setCamera(camera: THREE.PerspectiveCamera): void {
+  setCamera(camera: SceneCamera): void {
     this.camera = camera;
     // Initialise euler from camera's current rotation
     this.euler.setFromQuaternion(camera.quaternion, "YXZ");
@@ -106,6 +116,29 @@ export class CameraControls {
    */
   setWriteBack(fn: WriteBackFn): void {
     this.writeBack = fn;
+  }
+
+  /**
+   * Sets the callback fired the instant the user provides input,
+   * before that input is applied to the camera.
+   */
+  setOnUserInput(fn: () => void): void {
+    this.onUserInput = fn;
+  }
+
+  /**
+   * Marks the camera dirty (so writeBack fires this frame) and
+   * notifies onUserInput. Called at the *start* of each input branch,
+   * before that branch touches the camera — for the look/rotate
+   * branch specifically, onUserInput may resync `euler` (via
+   * setCamera, if a gizmo tween had left the camera's actual
+   * quaternion out ahead of it) mid-handler, so calling this first
+   * guarantees the euler math below always reads a fresh value rather
+   * than one left stale by an in-progress tween.
+   */
+  private notifyInput(): void {
+    this.dirty = true;
+    this.onUserInput?.();
   }
 
   /**
@@ -150,7 +183,7 @@ export class CameraControls {
         this.camera.position.addScaledVector(up, -speed);
         moved = true;
       }
-      if (moved) this.dirty = true;
+      if (moved) this.notifyInput();
     }
 
     // Write back to ECS — only when something actually changed the
@@ -192,6 +225,9 @@ export class CameraControls {
     this.lastMouseY = e.clientY;
 
     if (this.isRightMouseDown) {
+      // Notify (and let a pending tween resync `euler` via setCamera)
+      // BEFORE reading euler below — see notifyInput()'s doc comment.
+      this.notifyInput();
       // Look around
       this.euler.y -= dx * this.lookSensitivity;
       this.euler.x -= dy * this.lookSensitivity;
@@ -201,10 +237,10 @@ export class CameraControls {
         Math.min(Math.PI / 2 - 0.01, this.euler.x),
       );
       this.camera.quaternion.setFromEuler(this.euler);
-      this.dirty = true;
     }
 
     if (this.isMiddleMouseDown) {
+      this.notifyInput();
       // Pan
       const right = new THREE.Vector3();
       const up = new THREE.Vector3(0, 1, 0);
@@ -214,10 +250,10 @@ export class CameraControls {
 
       this.camera.position.addScaledVector(right, -dx * this.panSensitivity);
       this.camera.position.addScaledVector(up, dy * this.panSensitivity);
-      this.dirty = true;
     }
 
     if (this.isAltLeftMouseDown) {
+      this.notifyInput();
       // Orbit around target
       const offset = new THREE.Vector3().subVectors(
         this.camera.position,
@@ -233,19 +269,18 @@ export class CameraControls {
       this.camera.position.copy(this.orbitTarget).add(offset);
       this.camera.lookAt(this.orbitTarget);
       this.euler.setFromQuaternion(this.camera.quaternion, "YXZ");
-      this.dirty = true;
     }
   };
 
   private onWheel = (e: WheelEvent): void => {
     if (!this.camera) return;
     e.preventDefault();
+    this.notifyInput();
 
     const forward = new THREE.Vector3();
     this.camera.getWorldDirection(forward);
     const delta = e.deltaY > 0 ? -this.zoomSpeed : this.zoomSpeed;
     this.camera.position.addScaledVector(forward, delta);
-    this.dirty = true;
   };
 
   private onContextMenu = (e: Event): void => {
