@@ -17,10 +17,8 @@ interface EntityHierarchyPanelProps {
  *
  * Polls listEntityHierarchy() on an interval rather than fetching once,
  * since there's no Event Bus yet to push spawn/despawn/reparent
- * notifications — see Phase 13 design discussion for why polling (not
- * a one-time fetch, not per-tick) was the agreed trade-off. A
- * successful drag-and-drop drop triggers an immediate extra fetch on
- * top of the interval, so reparenting feels instant rather than
+ * notifications. A successful drag-and-drop drop triggers an immediate extra
+ * fetch on top of the interval, so reparenting feels instant rather than
  * waiting up to ~1s for the next poll tick.
  *
  * Cycle/invalid-target rejection is NOT checked client-side before a
