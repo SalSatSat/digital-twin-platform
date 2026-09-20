@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Engine } from "@dt-platform/renderer";
 import type { FieldRendererProps } from "./inspector/FieldRenderer";
 import { CameraField } from "./inspector/CameraField";
@@ -12,12 +12,6 @@ const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
   Velocity: VelocityField,
 };
 
-const displayNames: Record<string, string> = {
-  LocalTransform: "Transform",
-  Camera: "Camera",
-  Velocity: "Velocity",
-};
-
 interface InspectorProps {
   engine: Engine | null;
   selectedHandle: number | null;
@@ -25,6 +19,21 @@ interface InspectorProps {
 
 export function Inspector({ engine, selectedHandle }: InspectorProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // Reads component section-header names from the reflection registry
+  // (Rust's single source of truth for them — see reflection.rs's
+  // ComponentDescriptor) rather than keeping a second hardcoded copy
+  // here. The registry is static for the process's lifetime, so this
+  // only needs to be parsed once per Engine instance, not per render
+  // or per selection.
+  const displayNames = useMemo<Record<string, string>>(() => {
+    if (!engine) return {};
+    const entries = JSON.parse(engine.listComponentKinds()) as Array<{
+      kind: string;
+      display_name: string;
+    }>;
+    return Object.fromEntries(entries.map((e) => [e.kind, e.display_name]));
+  }, [engine]);
 
   function toggleCollapsed(kind: string) {
     setCollapsed((prev) => ({ ...prev, [kind]: !prev[kind] }));

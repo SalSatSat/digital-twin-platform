@@ -410,6 +410,17 @@ impl EngineWorld {
         serde_json::to_string(self.world.registry.contexts()).unwrap_or_else(|_| "[]".to_string())
     }
 
+    /// Returns every reflectable component kind's display name as a
+    /// JSON array of {kind, display_name} objects — the static
+    /// registry from reflection.rs, not tied to any entity. Lets the
+    /// Inspector's section headers use the same names as the rest of
+    /// the reflection layer instead of keeping a separate client-side
+    /// copy.
+    pub fn list_component_kinds(&self) -> String {
+        serde_json::to_string(&reflection::component_kind_infos())
+            .unwrap_or_else(|_| "[]".to_string())
+    }
+
     // ── Entity Hierarchy (list view) ───────────────────────────────────
     // Distinct from the reflection block above: this doesn't read
     // component *values* generically, it's a fixed-shape translation

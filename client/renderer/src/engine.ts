@@ -375,4 +375,16 @@ export class Engine {
     this.assertInitialized();
     return this.engineWorld!.list_contexts();
   }
+
+  /**
+   * Returns every reflectable component kind's display name as JSON —
+   * the static registry, independent of any entity. Callers should
+   * JSON.parse() the result as Array<{ kind: string; display_name:
+   * string }> — kept as a string here to mirror listCategories/
+   * listContexts's convention.
+   */
+  listComponentKinds(): string {
+    this.assertInitialized();
+    return this.engineWorld!.list_component_kinds();
+  }
 }

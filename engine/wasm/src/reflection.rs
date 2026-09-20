@@ -123,6 +123,32 @@ pub fn registry() -> &'static [ComponentDescriptor] {
     ]
 }
 
+/// Serializable view of a ComponentDescriptor's public-facing identity
+/// — kind name and display name only, no function pointers.
+/// ComponentDescriptor itself can't derive Serialize (it holds fn
+/// pointers); this exists so the WASM boundary can expose the static
+/// registry to JS without JS needing its own copy of the names.
+#[derive(Serialize)]
+pub struct ComponentKindInfo {
+    pub kind: &'static str,
+    pub display_name: &'static str,
+}
+
+/// The full registry's kind/display-name pairs, JSON-serializable.
+/// Used by EngineWorld::list_component_kinds() (lib.rs) so the
+/// Inspector's section headers read from the same names as the rest
+/// of the reflection layer, instead of keeping a second hardcoded
+/// copy client-side.
+pub fn component_kind_infos() -> Vec<ComponentKindInfo> {
+    registry()
+        .iter()
+        .map(|d| ComponentKindInfo {
+            kind: d.kind.as_str(),
+            display_name: d.display_name,
+        })
+        .collect()
+}
+
 /// Looks up an entity's reflectable components by probing hecs directly
 /// (via World::get_component's is_ok()) — intentionally not a tracked
 /// manifest. A second tracker could drift from the World's real state;
