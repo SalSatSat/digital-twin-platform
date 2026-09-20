@@ -14,7 +14,7 @@ const CUBE_SIZE = 0.5;
 const HOVER_BRIGHTEN = 1.3;
 
 // Matches GRID_CONFIG's X/Z axis colors (grid-config.ts) so the
-// widget's arms and the reference grid's origin lines read as the
+// widget's pins and the reference grid's origin lines read as the
 // same axes. No equivalent Y constant exists on the grid (it's a
 // ground-plane grid, no vertical axis line) — picked to sit at
 // similar brightness/saturation to the other two.
@@ -335,7 +335,7 @@ export class ViewGizmo {
     );
     cone.position
       .copy(direction)
-      .multiplyScalar(/*ARM_LENGTH + */ PIN_HEAD_HEIGHT /* / 2*/);
+      .multiplyScalar(PIN_HEAD_HEIGHT);
     cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), direction);
     this.root.add(cone);
 
@@ -347,7 +347,7 @@ export class ViewGizmo {
       labelSprite.scale.setScalar(LABEL_SCALE);
       labelSprite.position
         .copy(direction)
-        .multiplyScalar(/*ARM_LENGTH + */ PIN_HEAD_HEIGHT + LABEL_GAP);
+        .multiplyScalar(PIN_HEAD_HEIGHT + LABEL_GAP);
       this.root.add(labelSprite);
     }
 
