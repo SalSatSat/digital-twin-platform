@@ -113,20 +113,17 @@ The gizmo's own renderer was changed during implementation from a
 plain `THREE.WebGLRenderer` to `THREE.WebGPURenderer` (from the same
 `three/webgpu` entry point already used everywhere else in this
 codebase, which auto-falls-back to WebGL2 when WebGPU isn't
-available). This is unverified in one respect: `WebGPURenderer`
-typically requires an awaited `.init()` before first use, and no
-explicit call to it is visible in `ViewGizmo`'s constructor — it may
-be relying on `WebGPURenderer`'s internal lazy-init-on-first-render
-behavior. Confirmed working visually per this session, but worth a
-specific look if the gizmo ever renders blank on its very first frame
-in some browser/GPU combination — see Outstanding Technical Debt.
-
-Two now-dead constants remain in `view-gizmo.ts` (`ARM_LENGTH`,
-`ARM_RADIUS`) — leftover from an earlier iteration that connected each
-pin to the center cube with a visible rod; the current version removed
-the rod (pins float freely near the cube) but didn't remove the
-now-unused sizing constants for it. Low-priority cleanup — see
-Outstanding Technical Debt.
+available). `WebGPURenderer` requires an awaited `.init()` before its
+first `render()`. The initial implementation omitted this and relied
+on Three.js's internal fallback (r177: `render()` before init logs
+`THREE.Renderer: .render() called before the backend is initialized`
+and defers to `renderAsync()`), which rendered correctly but warned in
+the console. Resolved: `ViewGizmo.initialize()` awaits
+`renderer.init()`, and `Renderer.initialize()` awaits it alongside
+`backend.initialize()`, so the render loop never starts before the
+gizmo is ready — the same contract `WebGPUBackend` already follows.
+`ViewGizmo.dispose()` skips `renderer.dispose()` if init never
+completed, also mirroring `WebGPUBackend`.
 
 Like ADR-031's grid materials, `view-gizmo.ts`'s pin colors are
 manually kept in sync with `GRID_CONFIG.xAxisColor`/`zAxisColor` by
