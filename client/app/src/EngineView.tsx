@@ -21,10 +21,10 @@ interface EngineViewProps {
  */
 export function EngineView({ onEngineReady, editMode }: EngineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // The view gizmo's own small canvas — a separate plain
-  // THREE.WebGLRenderer, independent of the main canvas's backend
-  // (WebGPU or WebGL). See ViewGizmo's doc comment for why it's kept
-  // fully separate from the main render pipeline.
+  // The view gizmo's own small canvas — a separate THREE.WebGPURenderer,
+  // independent of the main canvas's backend (WebGPU or WebGL).
+  // See ViewGizmo's doc comment for why it's kept fully separate from the
+  // main render pipeline.
   const gizmoCanvasRef = useRef<HTMLCanvasElement>(null);
   // The gizmo's bottom-center Persp/Ortho/Iso label — plain DOM,
   // updated imperatively by ViewGizmo each frame (its text/icon

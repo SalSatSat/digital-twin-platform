@@ -101,6 +101,7 @@ export class ViewGizmo {
   private canvas: HTMLCanvasElement;
   private labelElement: HTMLElement;
   private renderer: THREE.WebGPURenderer;
+  private isInitialized = false;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private root: THREE.Group;
@@ -142,6 +143,16 @@ export class ViewGizmo {
 
     canvas.addEventListener("click", this.onClick);
     canvas.addEventListener("mousemove", this.onMouseMove);
+  }
+
+  /**
+   * Awaits the gizmo's WebGPURenderer initialization. Must complete
+   * before the first update() — same contract as
+   * WebGPUBackend.initialize(), which Renderer.initialize() also awaits.
+   */
+  async initialize(): Promise<void> {
+    await this.renderer.init();
+    this.isInitialized = true;
   }
 
   /** Sets the callback fired when the user clicks a pin. */
@@ -210,7 +221,7 @@ export class ViewGizmo {
     if (this.cube.material instanceof THREE.Material) {
       this.cube.material.dispose();
     }
-    this.renderer.dispose();
+    if (this.isInitialized) this.renderer.dispose();
   }
 
   /**
@@ -333,9 +344,7 @@ export class ViewGizmo {
       new THREE.ConeGeometry(PIN_HEAD_RADIUS, PIN_HEAD_HEIGHT, 12),
       new THREE.MeshBasicMaterial({ color }),
     );
-    cone.position
-      .copy(direction)
-      .multiplyScalar(PIN_HEAD_HEIGHT);
+    cone.position.copy(direction).multiplyScalar(PIN_HEAD_HEIGHT);
     cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), direction);
     this.root.add(cone);
 

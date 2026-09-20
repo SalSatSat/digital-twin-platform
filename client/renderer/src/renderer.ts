@@ -95,7 +95,7 @@ export class Renderer {
     this.gridMesh.visible = this.editMode;
     this.threeScene.add(this.gridMesh);
 
-    // The gizmo always renders with its own plain WebGLRenderer,
+    // The gizmo always renders with its own THREE.WebGPURenderer (which falls back to WebGL2 itself),
     // independent of hasWebGPU — see ViewGizmo's doc comment for why.
     // Its canvas's own visibility (shown only in edit mode) is owned
     // by EngineView.tsx via the editMode prop, not here — same split
@@ -118,11 +118,11 @@ export class Renderer {
   }
 
   /**
-   * Initializes the render backend.
+   * Initializes the render backend and the view gizmo's own renderer.
    * Must be awaited before calling setup().
    */
   async initialize(): Promise<void> {
-    await this.backend.initialize();
+    await Promise.all([this.backend.initialize(), this.gizmo.initialize()]);
   }
 
   /**
