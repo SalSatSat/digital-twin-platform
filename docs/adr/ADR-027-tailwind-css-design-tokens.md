@@ -72,8 +72,8 @@ Constrains: numeric-precision display (e.g. `f32`→`f64` round-trip
 noise showing as long decimal tails in Camera's Near/Far fields) was
 identified during this work but explicitly deferred, since a real fix
 requires a stateful `NumberField`-style component (local state while
-focused, format-on-blur), not a styling-only change. Tracked as an
-open Phase 13 follow-up.
+focused, format-on-blur), not a styling-only change. Resolved in
+ADR-030 (the buffered `NumberField` component).
 
 Two further follow-ups were identified but out of scope for this ADR's
 styling work, since both require Rust/WASM changes: a real per-entity
