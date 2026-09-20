@@ -316,6 +316,10 @@ impl EngineWorld {
     ///
     /// position: x, y, z
     /// rotation: quaternion x, y, z, w
+    // 8 args (handle + position + quaternion) is inherent to this setter's shape;
+    // grouping into a params struct would need a matching TS-side signature change
+    // (engine.ts plus its two scene-manager.ts call sites) -- not worth it for a
+    // thin boundary setter, not general logic. Same rationale as spawn_dynamic_object.
     #[allow(clippy::too_many_arguments)]
     pub fn set_camera_transform(
         &mut self,
