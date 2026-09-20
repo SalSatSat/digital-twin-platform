@@ -235,7 +235,7 @@ export class Renderer {
 
     try {
       this.engine.tick(simDeltaTime);
-      this.sceneManager.update(deltaTime, BOUNDARY_X, SPAWN_X);
+      this.sceneManager.update(deltaTime, BOUNDARY_X, SPAWN_X, !this.editMode);
     } catch (e) {
       console.warn("Engine tick error — stopping render loop:", e);
       this.stop();

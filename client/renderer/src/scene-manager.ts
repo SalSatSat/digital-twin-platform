@@ -418,9 +418,18 @@ export class SceneManager {
 
   /**
    * Updates all entity mesh positions from the ECS each frame.
-   * Handles boundary despawn and respawn for dynamic entities.
+   * Handles boundary despawn and respawn for dynamic entities, but only
+   * while the simulation is running (respawnEnabled). Boundary respawn is
+   * runtime logic — in edit mode it would destroy and recreate an entity
+   * (new handle, velocity reset) just because an Inspector edit moved it
+   * past the boundary.
    */
-  update(deltaTime: number, boundaryX: number, spawnX: number): void {
+  update(
+    deltaTime: number,
+    boundaryX: number,
+    spawnX: number,
+    respawnEnabled: boolean,
+  ): void {
     // Update camera controls
     this.controls?.update(deltaTime);
 
@@ -437,7 +446,7 @@ export class SceneManager {
       const position = this.engine.getPosition(spawned.handle);
       if (!position) continue;
 
-      if (position[0] > boundaryX) {
+      if (respawnEnabled && position[0] > boundaryX) {
         const name = spawned.name;
         const color = (
           spawned.mesh.material as THREE.MeshStandardMaterial
