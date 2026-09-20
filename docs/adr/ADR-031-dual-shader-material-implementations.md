@@ -72,8 +72,9 @@ which is a useful data point but not the primary reason for the
 pattern.
 
 ## Consequences
-Any future custom-shaded feature (Phase 16's gizmo, Phase 18's
-selection outline, etc.) should expect the same two-file treatment
+Any future custom-shaded feature (Phase 18's selection outline, etc. —
+Phase 16's gizmo was also expected to need this, but flat/unlit materials
+sufficed; see ADR-032) should expect the same two-file treatment
 whenever it needs a procedural/custom-shaded material rather than a
 stock Three.js material — this is now the established pattern, not a
 one-off for the grid. `RenderBackend`'s own interface (ADR-016) is

@@ -125,8 +125,12 @@ gizmo is ready — the same contract `WebGPUBackend` already follows.
 `ViewGizmo.dispose()` skips `renderer.dispose()` if init never
 completed, also mirroring `WebGPUBackend`.
 
-Like ADR-031's grid materials, `view-gizmo.ts`'s pin colors are
-manually kept in sync with `GRID_CONFIG.xAxisColor`/`zAxisColor` by
-convention, not by any shared single source of truth — a third
-place introducing its own axis colors would be the point to factor
-this out.
+The gizmo's positive X and Z pin colors are read directly from
+`GRID_CONFIG.xAxisColor`/`zAxisColor` (`grid-config.ts`), so they
+cannot drift from the grid's origin-axis lines. Only the Y pin color
+(`Y_AXIS_COLOR` in `view-gizmo.ts`) is gizmo-local, since the
+ground-plane grid has no vertical axis line to share it with; the
+achromatic negative-pin and cube colors are likewise gizmo-only by
+design. If the grid ever gains a Y axis line, or an editor theme
+system is introduced, `Y_AXIS_COLOR` is the one constant to move into
+shared config.
