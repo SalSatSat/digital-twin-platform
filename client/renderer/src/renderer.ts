@@ -179,7 +179,6 @@ export class Renderer {
     this.canvas.removeEventListener("mousedown", this.onPickMouseDown);
     this.canvas.removeEventListener("mouseup", this.onPickMouseUp);
     this.sceneManager.unloadScene();
-    this.sceneManager.unloadScene();
     this.gridMesh.geometry.dispose();
     if (this.gridMesh.material instanceof THREE.Material) {
       this.gridMesh.material.dispose();
