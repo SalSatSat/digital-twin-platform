@@ -260,12 +260,12 @@ _To be determined_
 | Phase 14 | Editor Functional Wiring — Inspector edits reflected in simulation (rotation/velocity/camera/enabled/visible), edit-mode pause (deltatime hold), editor visibility toggle with URL state, Editor/Runtime camera context selection | Phase 13   |
 | Phase 15 | Infinite Grid — Unity-style infinite reference grid rendered in the Editor-context viewport                                            | Phase 14   |
 | Phase 16 | View-Angle Camera Gizmo — quick-view camera presets (top/bottom/left/right/front/back, perspective/orthographic toggle)                | Phase 14   |
+| Phase 17 | Viewport Click-to-Select — click an entity in the 3D viewport to select it (raycasting against spawned meshes), syncing with the Hierarchy panel's existing selection state | Phase 14   |
 
 **Upcoming**
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 17 | Viewport Click-to-Select — click an entity in the 3D viewport to select it (raycasting against spawned meshes), syncing with the Hierarchy panel's existing selection state | Phase 14   |
 | Phase 18 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport                            | Phase 17   |
 | Phase 19 | Transform Gizmo — draggable gizmo attached to the selected entity for direct position/rotation manipulation in the viewport            | Phase 17   |
 | Phase 20 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 14   |
