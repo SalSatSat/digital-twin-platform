@@ -10,6 +10,11 @@ interface EngineViewProps {
    * (entities, camera position, selection) survives the mode switch.
    */
   editMode: boolean;
+  /**
+   * Called with the picked entity's handle (or null for empty-space
+   * click) on a plain left-click in the viewport while in edit mode.
+   */
+  onEntityPicked?: (handle: number | null) => void;
 }
 
 /**
@@ -19,7 +24,11 @@ interface EngineViewProps {
  * initialized, then the scene is set up and the render loop starts.
  * Both are disposed when this component unmounts.
  */
-export function EngineView({ onEngineReady, editMode }: EngineViewProps) {
+export function EngineView({
+  onEngineReady,
+  editMode,
+  onEntityPicked,
+}: EngineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // The view gizmo's own small canvas — a separate THREE.WebGPURenderer,
   // independent of the main canvas's backend (WebGPU or WebGL).
@@ -35,6 +44,13 @@ export function EngineView({ onEngineReady, editMode }: EngineViewProps) {
   // reach it without being a dependency of the setup effect — toggling
   // editMode must not tear down and recreate the Engine/Renderer.
   const rendererRef = useRef<Renderer | null>(null);
+  // Holds the latest onEntityPicked so the setup effect below doesn't
+  // need it as a dependency — same reasoning as rendererRef/editMode.
+  const onEntityPickedRef = useRef(onEntityPicked);
+
+  useEffect(() => {
+    onEntityPickedRef.current = onEntityPicked;
+  }, [onEntityPicked]);
 
   useEffect(() => {
     if (
@@ -52,6 +68,7 @@ export function EngineView({ onEngineReady, editMode }: EngineViewProps) {
       engine,
     );
     rendererRef.current = renderer;
+    renderer.setOnEntityPicked((handle) => onEntityPickedRef.current?.(handle));
     let isCancelled = false;
     async function start() {
       await engine.initialize();

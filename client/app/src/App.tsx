@@ -52,7 +52,11 @@ function App() {
         >
           {isEditMode ? "Exit Editor" : "Enter Editor"}
         </button>
-        <EngineView onEngineReady={setEngine} editMode={isEditMode} />
+        <EngineView
+          onEngineReady={setEngine}
+          editMode={isEditMode}
+          onEntityPicked={setSelectedHandle}
+        />
       </div>
       {isEditMode && (
         <Inspector engine={engine} selectedHandle={selectedHandle} />

@@ -605,6 +605,26 @@ export class SceneManager {
   }
 
   /**
+   * Casts a ray from NDC coordinates through the given camera and
+   * returns the handle of the closest visible entity hit, or null if
+   * nothing was hit. Editor-only in practice — callers gate this on
+   * edit mode; SceneManager itself has no notion of modes.
+   */
+  pickEntity(ndc: THREE.Vector2, camera: SceneCamera): number | null {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, camera);
+
+    const meshes = this.spawnedEntities
+      .filter((s) => s.mesh.visible)
+      .map((s) => s.mesh);
+    const hits = raycaster.intersectObjects(meshes, false);
+    if (hits.length === 0) return null;
+
+    const spawned = this.spawnedEntities.find((s) => s.mesh === hits[0].object);
+    return spawned?.handle ?? null;
+  }
+
+  /**
    * Returns the name of the active scene, or null if none is loaded.
    */
   get sceneName(): string | null {

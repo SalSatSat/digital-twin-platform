@@ -11,6 +11,7 @@ import { ViewGizmo } from "./gizmo/view-gizmo";
 
 const BOUNDARY_X = 4.0;
 const SPAWN_X = -3.0;
+const PICK_DRAG_THRESHOLD_PX = 4;
 
 type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
@@ -54,6 +55,11 @@ export class Renderer {
   // to receive real delta_time so camera navigation stays responsive.
   // Also controls the Editor-context reference grid's visibility.
   private editMode: boolean = false;
+
+  private onEntityPicked: ((handle: number | null) => void) | null = null;
+  private isPickCandidate = false;
+  private pickDownX = 0;
+  private pickDownY = 0;
 
   private resizeObserver: ResizeObserver;
 
@@ -115,6 +121,8 @@ export class Renderer {
     this.resizeObserver = new ResizeObserver(this.onResize);
     this.resizeObserver.observe(canvas);
     window.addEventListener("keydown", this.onKeyDown);
+    this.canvas.addEventListener("mousedown", this.onPickMouseDown);
+    this.canvas.addEventListener("mouseup", this.onPickMouseUp);
   }
 
   /**
@@ -168,6 +176,9 @@ export class Renderer {
     this.stop();
     this.resizeObserver.disconnect();
     window.removeEventListener("keydown", this.onKeyDown);
+    this.canvas.removeEventListener("mousedown", this.onPickMouseDown);
+    this.canvas.removeEventListener("mouseup", this.onPickMouseUp);
+    this.sceneManager.unloadScene();
     this.sceneManager.unloadScene();
     this.gridMesh.geometry.dispose();
     if (this.gridMesh.material instanceof THREE.Material) {
@@ -191,6 +202,46 @@ export class Renderer {
     this.editMode = enabled;
     this.gridMesh.visible = enabled;
   }
+
+  /**
+   * Sets the callback fired when a viewport click selects (or
+   * deselects) an entity. Only fires in edit mode; only fires for
+   * plain left-click, not drags — see onPickMouseUp below.
+   */
+  setOnEntityPicked(fn: (handle: number | null) => void): void {
+    this.onEntityPicked = fn;
+  }
+
+  private onPickMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0 || event.altKey) {
+      this.isPickCandidate = false;
+      return;
+    }
+    this.isPickCandidate = true;
+    this.pickDownX = event.clientX;
+    this.pickDownY = event.clientY;
+  };
+
+  private onPickMouseUp = (event: MouseEvent): void => {
+    const wasCandidate = this.isPickCandidate;
+    this.isPickCandidate = false;
+    if (!wasCandidate || event.button !== 0 || !this.editMode) return;
+
+    const dx = event.clientX - this.pickDownX;
+    const dy = event.clientY - this.pickDownY;
+    if (dx * dx + dy * dy > PICK_DRAG_THRESHOLD_PX * PICK_DRAG_THRESHOLD_PX) {
+      return; // was a drag, not a click
+    }
+
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+
+    const handle = this.sceneManager.pickEntity(ndc, this.getActiveCamera());
+    this.onEntityPicked?.(handle);
+  };
 
   private onResize = (): void => {
     const width = this.canvas.clientWidth;
