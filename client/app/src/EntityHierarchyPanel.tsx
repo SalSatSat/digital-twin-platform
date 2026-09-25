@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Engine, EntityHierarchyNode } from "@dt-platform/renderer";
 import { HierarchyError } from "@dt-platform/renderer";
+import type { Selection } from "./selection";
 
 interface EntityHierarchyPanelProps {
   engine: Engine | null;
-  selectedHandle: number | null;
-  onSelect: (handle: number) => void;
+  selection: Selection;
+  onSelect: (handle: number, opts: { additive: boolean }) => void;
 }
 
 /**
@@ -29,7 +30,7 @@ interface EntityHierarchyPanelProps {
  */
 export function EntityHierarchyPanel({
   engine,
-  selectedHandle,
+  selection,
   onSelect,
 }: EntityHierarchyPanelProps) {
   const [nodes, setNodes] = useState<EntityHierarchyNode[]>([]);
@@ -110,7 +111,8 @@ export function EntityHierarchyPanel({
   const renderNode = (node: EntityHierarchyNode): React.ReactNode => {
     const children = childrenOf(node.handle);
     const hasChildren = children.length > 0;
-    const isSelected = node.handle === selectedHandle;
+    const isPrimary = node.handle === selection.primary;
+    const isSelected = selection.handles.includes(node.handle);
     const isDragTarget =
       draggedHandle !== null && draggedHandle !== node.handle;
     const isCollapsed = collapsed.has(node.handle);
@@ -127,11 +129,15 @@ export function EntityHierarchyPanel({
             e.preventDefault();
             handleDrop(node.handle);
           }}
-          onClick={() => onSelect(node.handle)}
+          onClick={(e) =>
+            onSelect(node.handle, { additive: e.ctrlKey || e.metaKey })
+          }
           className={
-            isSelected
+            isPrimary
               ? "flex items-center gap-1 cursor-grab px-1 py-0.5 rounded bg-accent/30 text-text-primary"
-              : "flex items-center gap-1 cursor-grab px-1 py-0.5 rounded text-text-primary hover:bg-surface-raised"
+              : isSelected
+                ? "flex items-center gap-1 cursor-grab px-1 py-0.5 rounded bg-accent/15 text-text-primary"
+                : "flex items-center gap-1 cursor-grab px-1 py-0.5 rounded text-text-primary hover:bg-surface-raised"
           }
         >
           <span

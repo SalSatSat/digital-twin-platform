@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EngineView } from "./EngineView";
 import { Inspector } from "./Inspector";
 import { EntityHierarchyPanel } from "./EntityHierarchyPanel";
+import { EMPTY_SELECTION, clear, prune, select, toggle } from "./selection";
+import type { Selection } from "./selection";
 import type { Engine } from "@dt-platform/renderer";
 
 // The editor is reached via a distinct path ("/editor") rather than a
@@ -15,15 +17,74 @@ function isEditorPath(): boolean {
 
 function App() {
   const [engine, setEngine] = useState<Engine | null>(null);
-  const [selectedHandle, setSelectedHandle] = useState<number | null>(null);
+  const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
   const [isEditMode, setIsEditMode] = useState(isEditorPath);
 
-  // Keeps isEditMode in sync with browser back/forward navigation.
+  // Read inside the stable callbacks below instead of closing over
+  // isEditMode directly, so those callbacks' identities don't change
+  // when isEditMode does — see handleEngineReady's comment.
+  const isEditModeRef = useRef(isEditMode);
   useEffect(() => {
-    const onPopState = () => setIsEditMode(isEditorPath());
+    isEditModeRef.current = isEditMode;
+  }, [isEditMode]);
+
+  // Removes any selected handle no longer alive in the ECS. Handles
+  // can only die in Runtime (see unloadScene/boundary-respawn), so
+  // this only ever has work to do right when (re-)entering edit mode
+  // — called from every place that can cause that, below.
+  const pruneSelection = (withEngine: Engine): void => {
+    setSelection((prev) =>
+      prune(prev, (h) => withEngine.listComponents(h).length > 0),
+    );
+  };
+
+  // Keeps isEditMode in sync with browser back/forward navigation,
+  // and prunes on a popstate-driven entry into edit mode — the same
+  // as toggleEditMode below; popstate and that click are the only two
+  // ways isEditMode can become true.
+  useEffect(() => {
+    const onPopState = () => {
+      const next = isEditorPath();
+      setIsEditMode(next);
+      if (next && engine) pruneSelection(engine);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, [engine]);
+
+  // Passed to EngineView in place of setEngine directly. Identity
+  // MUST stay stable ([] deps) — EngineView's setup effect depends on
+  // onEngineReady, so a new identity here would tear down and
+  // recreate the Engine/Renderer on every App render. isEditMode is
+  // read via the ref above rather than closed over, for the same
+  // reason. This also covers a fresh Engine instance (StrictMode
+  // double-invoke or HMR) arriving while already in edit mode, so a
+  // stale handle from the previous instance can't collide with a
+  // newly spawned one.
+  const handleEngineReady = useCallback((nextEngine: Engine | null): void => {
+    setEngine(nextEngine);
+    if (nextEngine && isEditModeRef.current) pruneSelection(nextEngine);
   }, []);
+
+  // Shared by the viewport (on a hit) and the Hierarchy (always a hit).
+  const handleSelect = (handle: number, opts: { additive: boolean }): void => {
+    setSelection((prev) =>
+      opts.additive ? toggle(prev, handle) : select(handle),
+    );
+  };
+
+  // Viewport-only: unlike the Hierarchy, a pick can also be a miss
+  // (empty space), which plain-clears but additive-ignores.
+  const handleViewportPick = (
+    handle: number | null,
+    opts: { additive: boolean },
+  ): void => {
+    if (handle === null) {
+      if (!opts.additive) setSelection(clear());
+      return;
+    }
+    handleSelect(handle, opts);
+  };
 
   // Navigates between "/" and "/editor" via pushState rather than a
   // real link/redirect, so the Engine/Renderer are never torn down —
@@ -34,6 +95,7 @@ function App() {
     const next = !isEditMode;
     window.history.pushState({}, "", next ? "/editor" : "/");
     setIsEditMode(next);
+    if (next && engine) pruneSelection(engine);
   };
 
   return (
@@ -41,8 +103,8 @@ function App() {
       {isEditMode && (
         <EntityHierarchyPanel
           engine={engine}
-          selectedHandle={selectedHandle}
-          onSelect={setSelectedHandle}
+          selection={selection}
+          onSelect={handleSelect}
         />
       )}
       <div className="flex-1 min-w-0 relative">
@@ -53,13 +115,13 @@ function App() {
           {isEditMode ? "Exit Editor" : "Enter Editor"}
         </button>
         <EngineView
-          onEngineReady={setEngine}
+          onEngineReady={handleEngineReady}
           editMode={isEditMode}
-          onEntityPicked={setSelectedHandle}
+          onEntityPicked={handleViewportPick}
         />
       </div>
       {isEditMode && (
-        <Inspector engine={engine} selectedHandle={selectedHandle} />
+        <Inspector engine={engine} selectedHandle={selection.primary} />
       )}
     </div>
   );

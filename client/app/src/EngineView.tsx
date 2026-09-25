@@ -14,7 +14,7 @@ interface EngineViewProps {
    * Called with the picked entity's handle (or null for empty-space
    * click) on a plain left-click in the viewport while in edit mode.
    */
-  onEntityPicked?: (handle: number | null) => void;
+  onEntityPicked?: (handle: number | null, opts: { additive: boolean }) => void;
 }
 
 /**
@@ -68,7 +68,9 @@ export function EngineView({
       engine,
     );
     rendererRef.current = renderer;
-    renderer.setOnEntityPicked((handle) => onEntityPickedRef.current?.(handle));
+    renderer.setOnEntityPicked((handle, opts) =>
+      onEntityPickedRef.current?.(handle, opts),
+    );
     let isCancelled = false;
     async function start() {
       await engine.initialize();

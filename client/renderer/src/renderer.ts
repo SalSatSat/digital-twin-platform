@@ -56,7 +56,9 @@ export class Renderer {
   // Also controls the Editor-context reference grid's visibility.
   private editMode: boolean = false;
 
-  private onEntityPicked: ((handle: number | null) => void) | null = null;
+  private onEntityPicked:
+    | ((handle: number | null, opts: { additive: boolean }) => void)
+    | null = null;
   private isPickCandidate = false;
   private pickDownX = 0;
   private pickDownY = 0;
@@ -207,7 +209,9 @@ export class Renderer {
    * deselects) an entity. Only fires in edit mode; only fires for
    * plain left-click, not drags — see onPickMouseUp below.
    */
-  setOnEntityPicked(fn: (handle: number | null) => void): void {
+  setOnEntityPicked(
+    fn: (handle: number | null, opts: { additive: boolean }) => void,
+  ): void {
     this.onEntityPicked = fn;
   }
 
@@ -239,7 +243,9 @@ export class Renderer {
     );
 
     const handle = this.sceneManager.pickEntity(ndc, this.getActiveCamera());
-    this.onEntityPicked?.(handle);
+    this.onEntityPicked?.(handle, {
+      additive: event.ctrlKey || event.metaKey,
+    });
   };
 
   private onResize = (): void => {
