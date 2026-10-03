@@ -107,6 +107,16 @@ impl WorldTransform {
             rotation: (self.rotation * child_local.rotation).normalize(),
         }
     }
+
+    /// Returns the LocalTransform that, composed under `parent`, gives
+    /// this world transform -- the inverse of `compose`.
+    pub fn relative_to(&self, parent: &WorldTransform) -> LocalTransform {
+        let inverse_rotation = parent.rotation.inverse();
+        LocalTransform {
+            position: inverse_rotation * (self.position - parent.position),
+            rotation: (inverse_rotation * self.rotation).normalize(),
+        }
+    }
 }
 
 impl Default for WorldTransform {
@@ -123,6 +133,23 @@ impl Default for WorldTransform {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+
+    #[test]
+    fn world_transform_relative_to_is_the_inverse_of_compose() {
+        let parent = WorldTransform {
+            position: Vec3::new(5.0, -2.0, 1.0),
+            rotation: Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+        };
+        let local =
+            LocalTransform::new(Vec3::new(1.0, 2.0, 3.0)).with_rotation(Quat::from_rotation_x(0.5));
+
+        let recovered = parent.compose(&local).relative_to(&parent);
+
+        assert_relative_eq!(recovered.position.x, local.position.x, epsilon = 1e-5);
+        assert_relative_eq!(recovered.position.y, local.position.y, epsilon = 1e-5);
+        assert_relative_eq!(recovered.position.z, local.position.z, epsilon = 1e-5);
+        assert!(recovered.rotation.dot(local.rotation).abs() > 1.0 - 1e-5);
+    }
 
     #[test]
     fn local_transform_defaults_to_origin_with_identity_rotation() {

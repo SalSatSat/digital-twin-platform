@@ -1,6 +1,7 @@
 use crate::bundle::Bundle;
-use crate::components::{HierarchyError, HierarchyNode};
+use crate::components::{HierarchyError, HierarchyNode, LocalTransform, WorldTransform};
 use crate::registry::EntityRegistry;
+use glam::{Quat, Vec3};
 use hecs::Entity;
 
 /// The central container for all entities and components.
@@ -188,6 +189,118 @@ impl World {
         child_node.parent = None;
 
         Ok(())
+    }
+
+    /// Sets `entity`'s world-space pose by writing the LocalTransform that
+    /// produces it under the entity's current parent (for a root entity,
+    /// local equals world). The rotation is normalized.
+    ///
+    /// Only LocalTransform is written; the cached WorldTransform is
+    /// refreshed by HierarchySystem on its next run, as for any other
+    /// LocalTransform change.
+    ///
+    /// Returns `HierarchyError::EntityNotFound` if the entity, or any
+    /// ancestor, lacks a LocalTransform or HierarchyNode.
+    pub fn set_world_transform(
+        &mut self,
+        entity: Entity,
+        position: Vec3,
+        rotation: Quat,
+    ) -> Result<(), HierarchyError> {
+        let parent = self
+            .get_component::<HierarchyNode>(entity)
+            .map_err(|_| HierarchyError::EntityNotFound)?
+            .parent;
+        let rotation = rotation.normalize();
+        let local = match parent {
+            Some(parent) => {
+                let parent_world = self.computed_world_transform(parent)?;
+                WorldTransform { position, rotation }.relative_to(&parent_world)
+            }
+            None => LocalTransform::new(position).with_rotation(rotation),
+        };
+        let mut local_component = self
+            .get_component_mut::<LocalTransform>(entity)
+            .map_err(|_| HierarchyError::EntityNotFound)?;
+        *local_component = local;
+        Ok(())
+    }
+
+    /// Like `set_parent`, but also rewrites `child`'s LocalTransform so its
+    /// world pose is unchanged by the move (Unity's `worldPositionStays =
+    /// true`). Plain `set_parent` keeps the local values instead, so the
+    /// child's world pose changes with the new parent.
+    ///
+    /// Same errors as `set_parent`; on error neither the hierarchy nor any
+    /// transform is changed. Re-parenting to the current parent is a no-op.
+    pub fn set_parent_keep_world(
+        &mut self,
+        child: Entity,
+        new_parent: Entity,
+    ) -> Result<(), HierarchyError> {
+        if self
+            .get_component::<HierarchyNode>(child)
+            .is_ok_and(|node| node.parent == Some(new_parent))
+        {
+            return Ok(());
+        }
+        // Captured before the hierarchy changes, from LocalTransforms
+        // rather than the cached WorldTransform.
+        let world = self.computed_world_transform(child)?;
+        self.set_parent(child, new_parent)?;
+        self.set_world_transform(child, world.position, world.rotation)
+    }
+
+    /// Like `remove_parent`, but also rewrites `child`'s LocalTransform so
+    /// its world pose is unchanged by becoming a root. A no-op for an
+    /// entity that is already a root.
+    pub fn remove_parent_keep_world(&mut self, child: Entity) -> Result<(), HierarchyError> {
+        let is_root = self
+            .get_component::<HierarchyNode>(child)
+            .map_err(|_| HierarchyError::EntityNotFound)?
+            .parent
+            .is_none();
+        if is_root {
+            return Ok(());
+        }
+        let world = self.computed_world_transform(child)?;
+        self.remove_parent(child)?;
+        self.set_world_transform(child, world.position, world.rotation)
+    }
+
+    /// Returns `entity`'s world transform, computed by composing the
+    /// LocalTransforms along its ancestor chain (root first) instead of
+    /// reading the cached WorldTransform. The cache is only refreshed when
+    /// HierarchySystem runs, so a write path that must be exact right now
+    /// cannot trust it.
+    ///
+    /// Returns `HierarchyError::EntityNotFound` if `entity` or any
+    /// ancestor lacks a LocalTransform or HierarchyNode.
+    fn computed_world_transform(&self, entity: Entity) -> Result<WorldTransform, HierarchyError> {
+        // Walk up to the root collecting local transforms (entity first)...
+        let mut chain: Vec<LocalTransform> = Vec::new();
+        let mut next = Some(entity);
+        while let Some(current) = next {
+            let local = *self
+                .get_component::<LocalTransform>(current)
+                .map_err(|_| HierarchyError::EntityNotFound)?;
+            let parent = self
+                .get_component::<HierarchyNode>(current)
+                .map_err(|_| HierarchyError::EntityNotFound)?
+                .parent;
+            chain.push(local);
+            next = parent;
+        }
+
+        // ...then compose from the root down, mirroring HierarchySystem.
+        let mut world: Option<WorldTransform> = None;
+        for local in chain.iter().rev() {
+            world = Some(match world {
+                Some(parent_world) => parent_world.compose(local),
+                None => WorldTransform::from_local(local),
+            });
+        }
+        world.ok_or(HierarchyError::EntityNotFound)
     }
 
     /// Returns true if making `candidate_parent` the parent of `entity`
@@ -590,5 +703,170 @@ mod tests {
         approx::assert_relative_eq!(child_wt.position.x, 6.0, epsilon = 1e-6);
         approx::assert_relative_eq!(child_wt.position.y, 0.0, epsilon = 1e-6);
         approx::assert_relative_eq!(child_wt.position.z, 0.0, epsilon = 1e-6);
+    }
+
+    // -- world transform / keep-world reparenting tests --------------------------
+
+    /// Runs HierarchySystem once so cached WorldTransforms reflect the
+    /// current LocalTransforms and hierarchy.
+    fn tick_hierarchy(world: &mut World) {
+        let mut system = crate::systems::HierarchySystem::new();
+        system.run(world, 0.0);
+    }
+
+    /// Spawns a parent at (5, 1, -3) rotated 90 degrees about Y, so any
+    /// test using it exercises parent rotation as well as translation.
+    fn spawn_rotated_parent(world: &mut World) -> Entity {
+        let parent =
+            world.spawn_bundle(StaticObjectBundle::new("Parent", Vec3::new(5.0, 1.0, -3.0)));
+        world
+            .get_component_mut::<LocalTransform>(parent)
+            .unwrap()
+            .rotation = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        parent
+    }
+
+    fn assert_same_pose(actual: &WorldTransform, expected: &WorldTransform) {
+        approx::assert_relative_eq!(actual.position.x, expected.position.x, epsilon = 1e-5);
+        approx::assert_relative_eq!(actual.position.y, expected.position.y, epsilon = 1e-5);
+        approx::assert_relative_eq!(actual.position.z, expected.position.z, epsilon = 1e-5);
+        assert!(actual.rotation.dot(expected.rotation).abs() > 1.0 - 1e-5);
+    }
+
+    #[test]
+    fn world_set_world_transform_on_root_entity_sets_local_equal_to_world() {
+        // ARRANGE
+        let mut world = World::new();
+        let entity = world.spawn_bundle(StaticObjectBundle::new("Root", Vec3::ZERO));
+        let rotation = Quat::from_rotation_x(0.7);
+
+        // ACT
+        let result = world.set_world_transform(entity, Vec3::new(1.0, 2.0, 3.0), rotation);
+
+        // ASSERT
+        assert!(result.is_ok());
+        let local = world.get_component::<LocalTransform>(entity).unwrap();
+        assert_eq!(local.position, Vec3::new(1.0, 2.0, 3.0));
+        assert!(local.rotation.dot(rotation).abs() > 1.0 - 1e-6);
+    }
+
+    #[test]
+    fn world_set_world_transform_under_rotated_parent_produces_requested_world_pose() {
+        // ARRANGE
+        let mut world = World::new();
+        let parent = spawn_rotated_parent(&mut world);
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::ZERO));
+        world.set_parent(child, parent).unwrap();
+        let requested = WorldTransform {
+            position: Vec3::new(1.0, 2.0, 3.0),
+            rotation: Quat::from_rotation_x(0.7),
+        };
+
+        // ACT
+        world
+            .set_world_transform(child, requested.position, requested.rotation)
+            .unwrap();
+        tick_hierarchy(&mut world);
+
+        // ASSERT -- once HierarchySystem runs, the child's world pose is
+        // exactly what was requested
+        let actual = *world.get_component::<WorldTransform>(child).unwrap();
+        assert_same_pose(&actual, &requested);
+    }
+
+    #[test]
+    fn world_set_world_transform_returns_error_for_nonexistent_entity() {
+        let mut world = World::new();
+
+        let result = world.set_world_transform(hecs::Entity::DANGLING, Vec3::ZERO, Quat::IDENTITY);
+
+        assert!(matches!(result, Err(HierarchyError::EntityNotFound)));
+    }
+
+    #[test]
+    fn world_set_parent_keep_world_preserves_child_world_transform() {
+        // ARRANGE -- child is a separate root at (1, 0, 0); parent is rotated
+        let mut world = World::new();
+        let parent = spawn_rotated_parent(&mut world);
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::new(1.0, 0.0, 0.0)));
+        tick_hierarchy(&mut world);
+        let before = *world.get_component::<WorldTransform>(child).unwrap();
+
+        // ACT
+        let result = world.set_parent_keep_world(child, parent);
+        tick_hierarchy(&mut world);
+
+        // ASSERT -- world pose unchanged, but local values were rewritten
+        assert!(result.is_ok());
+        let after = *world.get_component::<WorldTransform>(child).unwrap();
+        assert_same_pose(&after, &before);
+        let local = world.get_component::<LocalTransform>(child).unwrap();
+        assert!((local.position - Vec3::new(1.0, 0.0, 0.0)).length() > 0.1);
+    }
+
+    #[test]
+    fn world_set_parent_keep_world_rejects_cycle_and_changes_nothing() {
+        // ARRANGE
+        let mut world = World::new();
+        let grandparent = world.spawn_bundle(StaticObjectBundle::new(
+            "Grandparent",
+            Vec3::new(1.0, 0.0, 0.0),
+        ));
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::new(2.0, 0.0, 0.0)));
+        world.set_parent(child, grandparent).unwrap();
+        let before = *world.get_component::<LocalTransform>(grandparent).unwrap();
+
+        // ACT
+        let result = world.set_parent_keep_world(grandparent, child);
+
+        // ASSERT
+        assert!(matches!(result, Err(HierarchyError::WouldCreateCycle)));
+        let after = *world.get_component::<LocalTransform>(grandparent).unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn world_set_parent_keep_world_to_same_parent_leaves_local_transform_untouched() {
+        // ARRANGE
+        let mut world = World::new();
+        let parent = spawn_rotated_parent(&mut world);
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::new(1.0, 0.0, 0.0)));
+        world.set_parent(child, parent).unwrap();
+        let before = *world.get_component::<LocalTransform>(child).unwrap();
+
+        // ACT
+        world.set_parent_keep_world(child, parent).unwrap();
+
+        // ASSERT -- bit-identical, not merely close: no needless rewrite
+        let after = *world.get_component::<LocalTransform>(child).unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn world_remove_parent_keep_world_preserves_world_transform_and_makes_root() {
+        // ARRANGE
+        let mut world = World::new();
+        let parent = spawn_rotated_parent(&mut world);
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::new(1.0, 0.0, 0.0)));
+        world.set_parent(child, parent).unwrap();
+        tick_hierarchy(&mut world);
+        let before = *world.get_component::<WorldTransform>(child).unwrap();
+
+        // ACT
+        let result = world.remove_parent_keep_world(child);
+        tick_hierarchy(&mut world);
+
+        // ASSERT
+        assert!(result.is_ok());
+        assert!(
+            world
+                .get_component::<HierarchyNode>(child)
+                .unwrap()
+                .is_root()
+        );
+        let after = *world.get_component::<WorldTransform>(child).unwrap();
+        assert_same_pose(&after, &before);
+        let local = world.get_component::<LocalTransform>(child).unwrap();
+        approx::assert_relative_eq!(local.position.x, before.position.x, epsilon = 1e-5);
     }
 }

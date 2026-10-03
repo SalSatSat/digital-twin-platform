@@ -156,6 +156,12 @@ impl EngineWorld {
     ///
     /// Idempotent: setting a child's parent to its current parent returns 0.
     ///
+    /// `world_position_stays` mirrors Unity's `Transform.SetParent` flag.
+    /// When true, `child`'s LocalTransform is rewritten so its world pose
+    /// is unchanged by the move (what a Hierarchy drag-and-drop wants).
+    /// When false, its local values are kept and its world pose follows
+    /// the new parent (what applying authored local transforms wants).
+    ///
     /// Status code, not a thrown exception: WouldCreateCycle and
     /// EntityNotFound are both expected, user-triggerable outcomes in
     /// an interactive editor (a drag-and-drop reparent landing on an
@@ -163,14 +169,24 @@ impl EngineWorld {
     /// as data the caller branches on rather than control-flow
     /// interruptions. Also: Result<(), JsValue> was tested here and
     /// found to break WASM instantiation in this project's toolchain.
-    pub fn set_parent(&mut self, child_handle: u32, parent_handle: u32) -> u8 {
+    pub fn set_parent(
+        &mut self,
+        child_handle: u32,
+        parent_handle: u32,
+        world_position_stays: bool,
+    ) -> u8 {
         let Some(child) = self.resolve_handle(child_handle) else {
             return 1;
         };
         let Some(parent) = self.resolve_handle(parent_handle) else {
             return 1;
         };
-        match self.world.set_parent(child, parent) {
+        let result = if world_position_stays {
+            self.world.set_parent_keep_world(child, parent)
+        } else {
+            self.world.set_parent(child, parent)
+        };
+        match result {
             Ok(()) => 0,
             Err(HierarchyError::EntityNotFound) => 1,
             Err(HierarchyError::WouldCreateCycle) => 2,
@@ -178,14 +194,21 @@ impl EngineWorld {
     }
     /// Removes `child`'s parent by handle, making it a root entity.
     ///
+    /// `world_position_stays` works as in `set_parent`.
+    ///
     /// Returns a status code:
     ///   0 = success (including if the entity was already a root — no-op)
     ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
-    pub fn remove_parent(&mut self, child_handle: u32) -> u8 {
+    pub fn remove_parent(&mut self, child_handle: u32, world_position_stays: bool) -> u8 {
         let Some(child) = self.resolve_handle(child_handle) else {
             return 1;
         };
-        match self.world.remove_parent(child) {
+        let result = if world_position_stays {
+            self.world.remove_parent_keep_world(child)
+        } else {
+            self.world.remove_parent(child)
+        };
+        match result {
             Ok(()) => 0,
             Err(HierarchyError::EntityNotFound) => 1,
             // remove_parent's Rust API only has one error variant, but match
@@ -193,6 +216,44 @@ impl EngineWorld {
             // compile time if HierarchyError ever grows a new variant.
             Err(HierarchyError::WouldCreateCycle) => {
                 unreachable!("remove_parent cannot produce WouldCreateCycle")
+            }
+        }
+    }
+    /// Sets an entity's world-space pose by handle. The engine writes
+    /// whichever LocalTransform gives the entity that world pose under
+    /// its current parent, so callers (the transform gizmo) never do the
+    /// parent math themselves.
+    ///
+    /// pose: [x, y, z, qx, qy, qz, qw] -- position, then rotation as a
+    /// quaternion. A slice rather than eight scalar arguments, which also
+    /// keeps this under clippy's argument limit without an allow.
+    ///
+    /// Returns a status code:
+    ///   0 = success
+    ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
+    ///   2 = malformed pose (wrong length, non-finite value, or zero-length quaternion)
+    ///
+    /// The cached WorldTransform (what get_position reads) updates on the
+    /// next tick.
+    pub fn set_world_transform(&mut self, handle: u32, pose: &[f32]) -> u8 {
+        let &[x, y, z, qx, qy, qz, qw] = pose else {
+            return 2;
+        };
+        let rotation = Quat::from_xyzw(qx, qy, qz, qw);
+        if !pose.iter().all(|v| v.is_finite()) || rotation.length_squared() < 1e-12 {
+            return 2;
+        }
+        let Some(entity) = self.resolve_handle(handle) else {
+            return 1;
+        };
+        match self
+            .world
+            .set_world_transform(entity, Vec3::new(x, y, z), rotation)
+        {
+            Ok(()) => 0,
+            Err(HierarchyError::EntityNotFound) => 1,
+            Err(HierarchyError::WouldCreateCycle) => {
+                unreachable!("set_world_transform cannot produce WouldCreateCycle")
             }
         }
     }
@@ -522,6 +583,71 @@ impl EngineWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn set_world_transform_moves_entity_after_tick() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Box", 0.0, 0.0, 0.0);
+
+        let status = world.set_world_transform(handle, &[1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0]);
+        world.tick(0.0);
+
+        assert_eq!(status, 0);
+        assert_eq!(world.get_position(handle), Some(vec![1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn set_world_transform_rejects_malformed_pose() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Box", 0.0, 0.0, 0.0);
+
+        assert_eq!(world.set_world_transform(handle, &[1.0, 2.0, 3.0]), 2);
+        assert_eq!(
+            world.set_world_transform(handle, &[f32::NAN, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
+            2
+        );
+        assert_eq!(
+            world.set_world_transform(handle, &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            2
+        );
+    }
+
+    #[test]
+    fn set_world_transform_returns_not_found_for_invalid_handle() {
+        let mut world = EngineWorld::new();
+
+        let status = world.set_world_transform(999, &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+
+        assert_eq!(status, 1);
+    }
+
+    #[test]
+    fn set_parent_with_world_position_stays_keeps_world_position() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 5.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        world.tick(0.0);
+
+        let status = world.set_parent(child, parent, true);
+        world.tick(0.0);
+
+        assert_eq!(status, 0);
+        assert_eq!(world.get_position(child), Some(vec![1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn set_parent_without_world_position_stays_keeps_local_values() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 5.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        world.tick(0.0);
+
+        let status = world.set_parent(child, parent, false);
+        world.tick(0.0);
+
+        assert_eq!(status, 0);
+        assert_eq!(world.get_position(child), Some(vec![6.0, 0.0, 0.0]));
+    }
 
     #[test]
     fn get_rotation_returns_identity_for_freshly_spawned_entity() {

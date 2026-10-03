@@ -253,10 +253,24 @@ export class Engine {
    * Throws HierarchyError if either handle is invalid, or if the
    * operation would create a cycle (parentHandle is childHandle
    * itself, or a descendant of childHandle).
+   *
+   * worldPositionStays (default true, as in Unity's Transform.SetParent):
+   * when true, childHandle's local transform is rewritten so its world
+   * pose is unchanged by the move; when false, its local values are kept
+   * and it moves to wherever the new parent puts it. Pass false when
+   * applying authored local transforms (e.g. loading a scene).
    */
-  setParent(childHandle: number, parentHandle: number): void {
+  setParent(
+    childHandle: number,
+    parentHandle: number,
+    worldPositionStays = true,
+  ): void {
     this.assertInitialized();
-    const status = this.engineWorld!.set_parent(childHandle, parentHandle);
+    const status = this.engineWorld!.set_parent(
+      childHandle,
+      parentHandle,
+      worldPositionStays,
+    );
     switch (status) {
       case 0:
         return;
@@ -280,10 +294,15 @@ export class Engine {
    * No-op if already a root.
    *
    * Throws HierarchyError if childHandle is invalid.
+   *
+   * worldPositionStays works as in setParent (default true).
    */
-  removeParent(childHandle: number): void {
+  removeParent(childHandle: number, worldPositionStays = true): void {
     this.assertInitialized();
-    const status = this.engineWorld!.remove_parent(childHandle);
+    const status = this.engineWorld!.remove_parent(
+      childHandle,
+      worldPositionStays,
+    );
     switch (status) {
       case 0:
         return;
@@ -294,6 +313,46 @@ export class Engine {
       default:
         throw new HierarchyError(
           `removeParent failed: unknown status code ${status}`,
+        );
+    }
+  }
+
+  /**
+   * Sets an entity's world-space pose. The engine converts it into
+   * whichever LocalTransform gives the entity that pose under its
+   * current parent, so callers never do the parent math themselves.
+   * The cached world transform (getPosition/getRotation) updates on
+   * the next tick.
+   *
+   * position is [x, y, z]; rotation is a quaternion [x, y, z, w].
+   *
+   * Throws HierarchyError if the handle is invalid, and Error if the
+   * pose is malformed (non-finite value or zero-length quaternion).
+   */
+  setWorldTransform(
+    handle: number,
+    position: readonly [number, number, number],
+    rotation: readonly [number, number, number, number],
+  ): void {
+    this.assertInitialized();
+    const status = this.engineWorld!.set_world_transform(
+      handle,
+      new Float32Array([...position, ...rotation]),
+    );
+    switch (status) {
+      case 0:
+        return;
+      case 1:
+        throw new HierarchyError(
+          `setWorldTransform failed: entity not found (handle=${handle})`,
+        );
+      case 2:
+        throw new Error(
+          `setWorldTransform failed: malformed pose (handle=${handle})`,
+        );
+      default:
+        throw new HierarchyError(
+          `setWorldTransform failed: unknown status code ${status}`,
         );
     }
   }
