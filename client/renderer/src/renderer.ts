@@ -9,6 +9,7 @@ import { WebGPUBackend } from "./backends/webgpu";
 import { createGridMesh, updateGridPosition } from "./grid/grid-mesh";
 import { ViewGizmo } from "./gizmo/view-gizmo";
 import { TransformGizmo } from "./gizmo/transform-gizmo";
+import { isEditableTarget } from "./input/is-editable-target";
 
 // Stable empty list for the gizmo outside edit mode: the gizmo re-reads the
 // entity hierarchy whenever it sees a new array instance, so a fresh []
@@ -313,7 +314,42 @@ export class Renderer {
     this.gizmo.resize();
   };
 
+  /**
+   * W / E switch the transform gizmo to translate / rotate (Unity's
+   * keys). Returns true if the key was consumed. Bare keys only, so
+   * browser shortcuts like Ctrl+W are never intercepted, and not while
+   * the right mouse button is held, when WASD flies the camera.
+   */
+  private handleGizmoModeKey(event: KeyboardEvent): boolean {
+    if (
+      event.repeat ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.shiftKey
+    ) {
+      return false;
+    }
+    if (this.sceneManager.isEditorCameraFlying()) return false;
+    switch (event.key.toLowerCase()) {
+      case "w":
+        this.transformGizmo.setMode("translate");
+        return true;
+      case "e":
+        this.transformGizmo.setMode("rotate");
+        return true;
+      default:
+        return false;
+    }
+  }
+
   private onKeyDown = (event: KeyboardEvent): void => {
+    // Letter shortcuts must not fire while typing in an Inspector field
+    // (the entity name, or the "e" a number input accepts).
+    if (isEditableTarget(event.target)) return;
+
+    if (this.editMode && this.handleGizmoModeKey(event)) return;
+
     if (event.key === "f" || event.key === "F") {
       if (!document.fullscreenElement) {
         this.canvas.requestFullscreen();

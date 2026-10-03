@@ -33,7 +33,8 @@ interface DragStart {
  * it follows its ancestor instead of moving twice. Hidden entities are
  * ignored (not counted in the pivot, not moved).
  *
- * Current scope: translate only. Rotate mode is a later step.
+ * Modes: translate and rotate (the ECS has no scale). Rotation is about
+ * the selection's pivot, so a multi-selection turns as a rigid group.
  */
 export class TransformGizmo {
   private controls: TransformControls;
@@ -92,6 +93,12 @@ export class TransformGizmo {
     return this.controls.axis !== null;
   }
 
+  /** Switches between translate and rotate. Ignored mid-drag. */
+  setMode(mode: "translate" | "rotate"): void {
+    if (this.controls.dragging) return;
+    this.controls.mode = mode;
+  }
+
   /**
    * Call once per frame, after the scene has been synced from the ECS
    * and before rendering. `handles` is the selection; pass the same
@@ -118,6 +125,9 @@ export class TransformGizmo {
       return;
     }
     this.proxy.position.copy(pivot);
+    // Handles stay world-aligned, and every rotation drag starts from
+    // identity, so the proxy's quaternion is the drag's rotation delta.
+    this.proxy.quaternion.identity();
     if (!this.attached) {
       this.controls.attach(this.proxy);
       this.attached = true;
@@ -223,16 +233,32 @@ export class TransformGizmo {
   private onObjectChange = (): void => {
     const start = this.dragStart;
     if (start === null) return;
+    const rotating = this.controls.mode === "rotate";
+    const delta = this.proxy.quaternion;
     const dx = this.proxy.position.x - start.pivot.x;
     const dy = this.proxy.position.y - start.pivot.y;
     const dz = this.proxy.position.z - start.pivot.z;
     for (const t of start.targets) {
+      let position: Vec3Tuple;
+      let rotation: QuatTuple = t.rotation;
+      if (rotating) {
+        // Orbit the pivot and compose the same world-space rotation delta,
+        // both from drag-start values so repeated writes never accumulate.
+        const orbit = new THREE.Vector3(
+          t.position[0] - start.pivot.x,
+          t.position[1] - start.pivot.y,
+          t.position[2] - start.pivot.z,
+        )
+          .applyQuaternion(delta)
+          .add(start.pivot);
+        const turned = new THREE.Quaternion(...t.rotation).premultiply(delta);
+        position = [orbit.x, orbit.y, orbit.z];
+        rotation = [turned.x, turned.y, turned.z, turned.w];
+      } else {
+        position = [t.position[0] + dx, t.position[1] + dy, t.position[2] + dz];
+      }
       try {
-        this.engine.setWorldTransform(
-          t.handle,
-          [t.position[0] + dx, t.position[1] + dy, t.position[2] + dz],
-          t.rotation,
-        );
+        this.engine.setWorldTransform(t.handle, position, rotation);
       } catch (e) {
         console.warn("Transform gizmo write rejected:", e);
       }

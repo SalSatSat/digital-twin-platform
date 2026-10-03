@@ -633,6 +633,14 @@ export class SceneManager {
   }
 
   /**
+   * True while the editor camera is in fly mode (right mouse held),
+   * when WASD is camera movement rather than a shortcut.
+   */
+  isEditorCameraFlying(): boolean {
+    return this.controls?.isFlying ?? false;
+  }
+
+  /**
    * Returns the name of the active scene, or null if none is loaded.
    */
   get sceneName(): string | null {

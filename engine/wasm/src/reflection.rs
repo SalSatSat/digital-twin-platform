@@ -206,10 +206,15 @@ fn velocity_from_json(
 // This is the pattern to follow for any future component with the same
 // need; LocalTransform itself is untouched, no serde derive added to it.
 
-/// JSON-facing shape of LocalTransform. Rotation is intrinsic XYZ Euler
-/// angles in degrees — [pitch, yaw, roll] — chosen for Inspector
-/// editability; storage stays quaternion-based to avoid gimbal lock
-/// and drift during runtime composition.
+/// JSON-facing shape of LocalTransform. Rotation is intrinsic YXZ Euler
+/// angles in degrees, laid out as [pitch (X), yaw (Y), roll (Z)] and
+/// composed as yaw, then pitch, then roll -- equivalent to Unity's
+/// Z-then-X-then-Y order. Yaw is the outermost rotation, so it turns
+/// freely through +/-180 degrees; only pitch is limited to +/-90 before
+/// the decomposition flips to an equivalent triple (the usual gimbal
+/// limit). Chosen for Inspector editability; storage stays
+/// quaternion-based to avoid gimbal lock and drift during runtime
+/// composition. See ADR-035.
 #[derive(Serialize, Deserialize)]
 struct LocalTransformView {
     position: Vec3,
@@ -227,10 +232,11 @@ fn local_transform_to_json(
     let transform = world
         .get_component::<LocalTransform>(entity)
         .map_err(|_| ReflectError::ComponentNotPresent)?;
-    let (x, y, z) = transform.rotation.to_euler(EulerRot::XYZ);
+    // glam returns the angles in the order of the EulerRot variant: yaw, pitch, roll.
+    let (yaw, pitch, roll) = transform.rotation.to_euler(EulerRot::YXZ);
     let view = LocalTransformView {
         position: transform.position,
-        rotation_euler_deg: [x.to_degrees(), y.to_degrees(), z.to_degrees()],
+        rotation_euler_deg: [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()],
     };
     serde_json::to_value(&view).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
 }
@@ -247,9 +253,9 @@ fn local_transform_from_json(
         .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
     let [pitch, yaw, roll] = view.rotation_euler_deg;
     let rotation = Quat::from_euler(
-        EulerRot::XYZ,
-        pitch.to_radians(),
+        EulerRot::YXZ,
         yaw.to_radians(),
+        pitch.to_radians(),
         roll.to_radians(),
     );
     let mut transform = world
@@ -456,6 +462,79 @@ mod tests {
         let result = local_transform_to_json(&world, entity).unwrap();
         let yaw = result["rotation_euler_deg"][1].as_f64().unwrap();
         assert!((yaw - 90.0).abs() < 0.001);
+    }
+
+    fn spawn_with_local_transform(world: &mut World) -> Entity {
+        let entity = world.spawn();
+        world
+            .add_component(entity, LocalTransform::new(Vec3::ZERO))
+            .unwrap();
+        entity
+    }
+
+    fn set_euler_deg(world: &mut World, entity: Entity, euler: [f32; 3]) {
+        let json = serde_json::json!({
+            "position": [0.0, 0.0, 0.0],
+            "rotation_euler_deg": euler
+        });
+        local_transform_from_json(world, entity, json).unwrap();
+    }
+
+    fn read_euler_deg(world: &World, entity: Entity) -> [f64; 3] {
+        let json = local_transform_to_json(world, entity).unwrap();
+        let euler = &json["rotation_euler_deg"];
+        std::array::from_fn(|i| euler[i].as_f64().unwrap())
+    }
+
+    #[test]
+    fn local_transform_yaw_past_90_degrees_reads_back_as_pure_yaw() {
+        // The reported case: with the old XYZ order, 91 degrees of yaw
+        // read back as [-180, 89, -180].
+        for yaw in [91.0_f32, 135.0, 179.0, -91.0, -135.0] {
+            let mut world = World::new();
+            let entity = spawn_with_local_transform(&mut world);
+
+            set_euler_deg(&mut world, entity, [0.0, yaw, 0.0]);
+
+            let [pitch_out, yaw_out, roll_out] = read_euler_deg(&world, entity);
+            assert!(pitch_out.abs() < 0.01, "pitch for yaw {yaw}: {pitch_out}");
+            assert!(
+                (yaw_out - f64::from(yaw)).abs() < 0.01,
+                "yaw {yaw}: {yaw_out}"
+            );
+            assert!(roll_out.abs() < 0.01, "roll for yaw {yaw}: {roll_out}");
+        }
+    }
+
+    #[test]
+    fn local_transform_euler_order_is_yaw_then_pitch_then_roll() {
+        let mut world = World::new();
+        let entity = spawn_with_local_transform(&mut world);
+
+        set_euler_deg(&mut world, entity, [30.0, 60.0, 15.0]);
+
+        // Built independently of the code under test: Ry * Rx * Rz.
+        let expected = Quat::from_rotation_y(60.0_f32.to_radians())
+            * Quat::from_rotation_x(30.0_f32.to_radians())
+            * Quat::from_rotation_z(15.0_f32.to_radians());
+        let actual = world
+            .get_component::<LocalTransform>(entity)
+            .unwrap()
+            .rotation;
+        assert!(actual.dot(expected).abs() > 1.0 - 1e-6);
+    }
+
+    #[test]
+    fn local_transform_round_trips_mixed_euler_angles() {
+        let mut world = World::new();
+        let entity = spawn_with_local_transform(&mut world);
+
+        set_euler_deg(&mut world, entity, [30.0, 60.0, 15.0]);
+
+        let [pitch, yaw, roll] = read_euler_deg(&world, entity);
+        assert!((pitch - 30.0).abs() < 0.01);
+        assert!((yaw - 60.0).abs() < 0.01);
+        assert!((roll - 15.0).abs() < 0.01);
     }
 
     #[test]

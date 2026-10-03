@@ -46,6 +46,14 @@ export class CameraControls {
   private isRightMouseDown = false;
   private isMiddleMouseDown = false;
   private isAltLeftMouseDown = false;
+
+  /**
+   * True while the right mouse button is held -- fly mode, in which WASD
+   * moves the camera rather than acting as a shortcut.
+   */
+  get isFlying(): boolean {
+    return this.isRightMouseDown;
+  }
   private lastMouseX = 0;
   private lastMouseY = 0;
 
