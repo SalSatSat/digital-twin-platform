@@ -8,6 +8,7 @@ import { WebGLBackend } from "./backends/webgl";
 import { WebGPUBackend } from "./backends/webgpu";
 import { createGridMesh, updateGridPosition } from "./grid/grid-mesh";
 import { ViewGizmo } from "./gizmo/view-gizmo";
+import { TransformGizmo } from "./gizmo/transform-gizmo";
 
 const BOUNDARY_X = 4.0;
 const SPAWN_X = -3.0;
@@ -42,6 +43,11 @@ export class Renderer {
   private engine: Engine;
   private gridMesh: THREE.Mesh;
   private gizmo: ViewGizmo;
+  private transformGizmo: TransformGizmo;
+  // ECS handle the transform gizmo attaches to (edit mode only), fed
+  // from the editor's primary selection via setGizmoTarget.
+  private gizmoTargetHandle: number | null = null;
+  private onEntityTransformChanged: ((handle: number) => void) | null = null;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -116,6 +122,18 @@ export class Renderer {
       this.sceneManager.toggleEditorCameraProjection();
     });
 
+    // Editor-context transform gizmo (ADR-034). Lives in the main
+    // scene; stays detached unless an entity is targeted in edit mode.
+    this.transformGizmo = new TransformGizmo(
+      this.threeScene,
+      this.fallbackCamera,
+      canvas,
+      engine,
+    );
+    this.transformGizmo.setOnTransformCommitted((handle) => {
+      this.onEntityTransformChanged?.(handle);
+    });
+
     // ResizeObserver, not window "resize" — the canvas's own size can
     // change from layout shifts (e.g. side panels appearing/disappearing
     // when toggling edit mode) without the browser window itself
@@ -185,6 +203,7 @@ export class Renderer {
     if (this.gridMesh.material instanceof THREE.Material) {
       this.gridMesh.material.dispose();
     }
+    this.transformGizmo.dispose();
     this.gizmo.dispose();
     this.backend.dispose();
   }
@@ -215,8 +234,31 @@ export class Renderer {
     this.onEntityPicked = fn;
   }
 
+  /**
+   * Sets the entity the transform gizmo attaches to, or null for
+   * none. Only takes effect in edit mode.
+   */
+  setGizmoTarget(handle: number | null): void {
+    this.gizmoTargetHandle = handle;
+  }
+
+  /**
+   * Sets the callback fired when a gizmo drag finishes writing a new
+   * transform for an entity.
+   */
+  setOnEntityTransformChanged(fn: (handle: number) => void): void {
+    this.onEntityTransformChanged = fn;
+  }
+
   private onPickMouseDown = (event: MouseEvent): void => {
-    if (event.button !== 0 || event.altKey) {
+    // A press on a gizmo handle starts a gizmo drag, not a pick. The
+    // gizmo's hovered axis is updated on pointerdown, which fires
+    // before this mousedown.
+    if (
+      event.button !== 0 ||
+      event.altKey ||
+      this.transformGizmo.isHandleHovered()
+    ) {
       this.isPickCandidate = false;
       return;
     }
@@ -306,6 +348,16 @@ export class Renderer {
         activeCamera instanceof THREE.OrthographicCamera,
       );
     }
+
+    // Editor-only; a null target (always the case in Runtime) detaches.
+    const gizmoHandle = this.editMode ? this.gizmoTargetHandle : null;
+    this.transformGizmo.update(
+      activeCamera,
+      gizmoHandle,
+      gizmoHandle !== null
+        ? this.sceneManager.getEntityMesh(gizmoHandle)
+        : null,
+    );
 
     this.backend.render(this.threeScene, activeCamera);
     this.animationFrameId = requestAnimationFrame(this.renderLoop);

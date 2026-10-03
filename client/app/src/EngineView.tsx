@@ -15,6 +15,16 @@ interface EngineViewProps {
    * click) on a plain left-click in the viewport while in edit mode.
    */
   onEntityPicked?: (handle: number | null, opts: { additive: boolean }) => void;
+  /**
+   * ECS handle the transform gizmo attaches to in edit mode (the
+   * editor's primary selection), or null for none.
+   */
+  gizmoTarget: number | null;
+  /**
+   * Called when a gizmo drag finishes writing a new transform for the
+   * given entity, so React-side views of it (the Inspector) can refresh.
+   */
+  onEntityTransformChanged?: (handle: number) => void;
 }
 
 /**
@@ -28,6 +38,8 @@ export function EngineView({
   onEngineReady,
   editMode,
   onEntityPicked,
+  gizmoTarget,
+  onEntityTransformChanged,
 }: EngineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // The view gizmo's own small canvas — a separate THREE.WebGPURenderer,
@@ -52,6 +64,12 @@ export function EngineView({
     onEntityPickedRef.current = onEntityPicked;
   }, [onEntityPicked]);
 
+  // Same latest-callback pattern, for the gizmo's transform-changed callback.
+  const onEntityTransformChangedRef = useRef(onEntityTransformChanged);
+  useEffect(() => {
+    onEntityTransformChangedRef.current = onEntityTransformChanged;
+  }, [onEntityTransformChanged]);
+
   useEffect(() => {
     if (
       !canvasRef.current ||
@@ -70,6 +88,9 @@ export function EngineView({
     rendererRef.current = renderer;
     renderer.setOnEntityPicked((handle, opts) =>
       onEntityPickedRef.current?.(handle, opts),
+    );
+    renderer.setOnEntityTransformChanged((handle) =>
+      onEntityTransformChangedRef.current?.(handle),
     );
     let isCancelled = false;
     async function start() {
@@ -94,6 +115,10 @@ export function EngineView({
   useEffect(() => {
     rendererRef.current?.setEditMode(editMode);
   }, [editMode]);
+
+  useEffect(() => {
+    rendererRef.current?.setGizmoTarget(gizmoTarget);
+  }, [gizmoTarget]);
 
   return (
     <>

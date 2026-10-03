@@ -625,6 +625,14 @@ export class SceneManager {
   }
 
   /**
+   * Returns the Three.js mesh for an entity handle, or null if there
+   * is none. Used by the Renderer to attach the transform gizmo.
+   */
+  getEntityMesh(handle: number): THREE.Mesh | null {
+    return this.spawnedEntities.find((s) => s.handle === handle)?.mesh ?? null;
+  }
+
+  /**
    * Returns the name of the active scene, or null if none is loaded.
    */
   get sceneName(): string | null {
