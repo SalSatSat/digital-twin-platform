@@ -72,7 +72,7 @@ which is a useful data point but not the primary reason for the
 pattern.
 
 ## Consequences
-Any future custom-shaded feature (Phase 18's selection outline, etc. —
+Any future custom-shaded feature (Phase 21's selection outline, etc. —
 Phase 16's gizmo was also expected to need this, but flat/unlit materials
 sufficed; see ADR-032) should expect the same two-file treatment
 whenever it needs a procedural/custom-shaded material rather than a

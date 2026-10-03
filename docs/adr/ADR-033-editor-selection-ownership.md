@@ -13,7 +13,7 @@ an entity from the 3D viewport itself, and no ADR recorded where selection
 should live or how it should be shaped; ADR-026 covers the Hierarchy panel
 itself, and ADR-029 covers Editor/Runtime *camera* context selection, a
 different concept. Phase 17 needed to add viewport click-to-select, and
-Phases 18 (outline) and 19 (transform gizmo) both need a selection model
+Phases 18 (transform gizmo) and 21 (outline) both need a selection model
 that already supports more than one entity, so the shape had to be
 settled now rather than revisited per-phase.
 
@@ -61,7 +61,7 @@ because click accuracy doesn't need ECS-authoritative state — the meshes
 already mirror ECS world position every frame — and at the current scale
 (box meshes, tens of entities) a per-click `Raycaster` call is
 negligible. A Rust-side BVH shared with future collision detection is a
-plausible later optimization if GLB models (Phase 21) make CPU
+plausible later optimization if GLB models (Phase 20) make CPU
 raycasting a bottleneck, but the `pickEntity(ndc, camera): number | null`
 contract doesn't change either way, so nothing here blocks that path.
 
@@ -69,7 +69,7 @@ App ownership (over Renderer- or ECS-owned selection) keeps the ECS the
 source of truth for simulation data only, keeps selection naturally
 reactive to React re-renders (Inspector, Hierarchy), and avoids
 pre-building a second, throwaway "selection" concept in Rust before
-Phase 20's Event Bus can introduce `OnEntitySelected` properly.
+Phase 19's Event Bus can introduce `OnEntitySelected` properly.
 
 A shared `selection.ts` over duplicating toggle/promote logic in both
 `EngineView` and `EntityHierarchyPanel` guarantees the two entry points
@@ -80,7 +80,7 @@ Shift-range-select intentionally were not attempted from memory and are
 deferred rather than guessed at.
 
 Deferring the `setSelection` push (an outline-consuming shape, e.g. a
-list of Object3D references) to Phase 18: nothing in Phase 17 consumes
+list of Object3D references) to Phase 21: nothing in Phase 17 consumes
 it, and its shape should be dictated by what the outline pass actually
 needs, not guessed now.
 
@@ -98,7 +98,7 @@ be `useCallback`-memoized with an empty dependency array, reading
 
 ## Consequences
 Enables viewport click-to-select with full parity between the viewport
-and the Hierarchy panel, and a multi-select foundation Phases 18 and 19
+and the Hierarchy panel, and a multi-select foundation Phases 18 and 21
 can consume directly (`selection.handles` for multi-entity outline
 highlighting, `selection.primary` as the transform gizmo's attach
 target) without a selection-model redesign.
@@ -107,7 +107,7 @@ Constrains: any future selection input surface (a Console log entry, an
 asset-browser row) must reuse `selection.ts`'s `select`/`toggle`/`clear`/
 `prune` rather than inventing parallel transitions. A future need for an
 *engine-side* selection concept (server-persisted selection, physics-side
-picking) is a different data flow — Phase 20's Event Bus — and should not
+picking) is a different data flow — Phase 19's Event Bus — and should not
 be retrofitted onto this client-only React state. `App`'s `onEngineReady`
 must remain referentially stable (`useCallback` with `[]` deps) for as
 long as `EngineView`'s setup effect depends on it; any future change to
