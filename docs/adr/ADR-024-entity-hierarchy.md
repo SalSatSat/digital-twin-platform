@@ -101,3 +101,29 @@ found, 2 = would create a cycle) rather than a boolean, specifically so
 the future Runtime Editor's Hierarchy panel (Phase 15) can give the
 user a specific reason when a drag-and-drop reparent is rejected,
 rather than only "it didn't work."
+
+## Addendum: World-Preserving Reparenting (2026-10-04)
+This ADR left open what happens to a child's transform when its parent
+changes. The engine's `World::set_parent` and `remove_parent` keep the child's
+`LocalTransform` untouched, so its world pose jumps to wherever the new parent
+puts it. That is the right behaviour when applying authored local transforms,
+but not for drag-and-drop reparenting in the Hierarchy panel, where users
+expect the entity to stay where it is (as in Unity, where `Transform.SetParent`
+defaults to `worldPositionStays = true`).
+
+Both behaviours now exist. `World::set_parent_keep_world` and
+`remove_parent_keep_world` additionally rewrite the child's `LocalTransform`
+so its world pose is unchanged. The WASM `set_parent` and `remove_parent` take
+a `world_position_stays` flag selecting between them, and the TypeScript
+`Engine` methods default it to true, so the Hierarchy panel keeps the world
+pose. Code applying authored local transforms (such as a future scene loader)
+must pass false.
+
+The conversion rests on `WorldTransform::relative_to`, the inverse of
+`compose`, and on `World::set_world_transform`, which writes the
+`LocalTransform` that produces a requested world pose under the entity's
+current parent. It computes the parent's world transform by composing
+`LocalTransform`s up the ancestor chain rather than reading the cached
+`WorldTransform`, which is only refreshed when `HierarchySystem` runs. The
+transform gizmo (ADR-034) uses the same function through the WASM
+`set_world_transform`.
