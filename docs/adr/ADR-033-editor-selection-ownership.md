@@ -44,8 +44,10 @@ promotes the most recently added remaining handle. Ctrl/Cmd-click on
 empty viewport space is a no-op; a plain click on empty space clears the
 whole selection. `primary` is the one handle the Inspector displays —
 multi-edit is out of scope for this phase. Shift-range-select,
-multi-drag, and multi-edit are explicitly deferred (see the handoff's
-Outstanding Technical Debt).
+Hierarchy multi-drag (drag-and-drop reparenting stays single-entity),
+and multi-edit are explicitly deferred. Transforming the whole selection
+from the viewport gizmo is a separate matter, brought into Phase 18 —
+see ADR-034's amendment.
 
 Selection is **pruned** against `engine.listComponents(handle).length > 0`
 whenever edit mode is (re-)entered: from the "Enter Editor" click, from a
@@ -100,8 +102,9 @@ be `useCallback`-memoized with an empty dependency array, reading
 Enables viewport click-to-select with full parity between the viewport
 and the Hierarchy panel, and a multi-select foundation Phases 18 and 21
 can consume directly (`selection.handles` for multi-entity outline
-highlighting, `selection.primary` as the transform gizmo's attach
-target) without a selection-model redesign.
+highlighting and for the transform gizmo's pivot and drag targets,
+`selection.primary` for the Inspector) without a selection-model
+redesign.
 
 Constrains: any future selection input surface (a Console log entry, an
 asset-browser row) must reuse `selection.ts`'s `select`/`toggle`/`clear`/

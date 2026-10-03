@@ -90,3 +90,30 @@ conversion is available from the engine's hierarchy export.
 
 The gizmo is independent of Phase 21's selection outline. Phase 19's Event Bus
 may later emit transform-change events from the adapter's write path.
+
+## Amendment — Multi-selection and engine-side pose conversion (2026-10-03)
+Step 2 (translate only, root entities) passed its browser checks. Two decisions
+changed after that and supersede the matching parts of the Decision and
+Consequences above, including the statement that no Rust or WASM change is
+needed.
+
+**The gizmo acts on the whole selection.** The controls attach to an invisible
+proxy object, not to an entity mesh. The proxy sits at the average of the
+selected entities' world origins (origins rather than bounds, so the pivot does
+not depend on mesh geometry). Dragging applies the proxy's change to each
+selected entity. An entity whose ancestor is also selected is not moved
+directly; it follows its ancestor, so nothing moves twice. A single selection is
+the same path with one entity. The adapter is fed `selection.handles`;
+`selection.primary` remains the Inspector's entity.
+
+**World-to-local conversion lives in the engine.** A new Rust function,
+`World::set_world_transform(entity, position, rotation)`, writes the
+`LocalTransform` that gives the entity the requested world pose under its
+current parent, and is exposed over WASM. The adapter sends world poses
+(position and quaternion) instead of composing `LocalTransform` JSON. This
+replaces the TypeScript-side parent composition and Euler conversion planned
+above, so the Euler-order and parent-handle verification items no longer apply
+to the gizmo. The same function lets reparenting in the Hierarchy panel keep an
+entity's world transform, which today it does not: `World::set_parent` and
+`remove_parent` leave `LocalTransform` untouched, so the entity jumps. That
+change is made with the engine work, not by this amendment.
