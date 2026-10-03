@@ -10,6 +10,11 @@ import { createGridMesh, updateGridPosition } from "./grid/grid-mesh";
 import { ViewGizmo } from "./gizmo/view-gizmo";
 import { TransformGizmo } from "./gizmo/transform-gizmo";
 
+// Stable empty list for the gizmo outside edit mode: the gizmo re-reads the
+// entity hierarchy whenever it sees a new array instance, so a fresh []
+// each frame would re-read it every frame.
+const NO_GIZMO_TARGETS: readonly number[] = [];
+
 const BOUNDARY_X = 4.0;
 const SPAWN_X = -3.0;
 const PICK_DRAG_THRESHOLD_PX = 4;
@@ -44,10 +49,12 @@ export class Renderer {
   private gridMesh: THREE.Mesh;
   private gizmo: ViewGizmo;
   private transformGizmo: TransformGizmo;
-  // ECS handle the transform gizmo attaches to (edit mode only), fed
-  // from the editor's primary selection via setGizmoTarget.
-  private gizmoTargetHandle: number | null = null;
-  private onEntityTransformChanged: ((handle: number) => void) | null = null;
+  // ECS handles the transform gizmo acts on (edit mode only), fed from
+  // the editor's whole selection via setGizmoTargets.
+  private gizmoTargetHandles: readonly number[] = [];
+  private onEntityTransformChanged:
+    | ((handles: readonly number[]) => void)
+    | null = null;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -129,9 +136,10 @@ export class Renderer {
       this.fallbackCamera,
       canvas,
       engine,
+      (handle) => this.sceneManager.getEntityMesh(handle),
     );
-    this.transformGizmo.setOnTransformCommitted((handle) => {
-      this.onEntityTransformChanged?.(handle);
+    this.transformGizmo.setOnTransformCommitted((handles) => {
+      this.onEntityTransformChanged?.(handles);
     });
 
     // ResizeObserver, not window "resize" — the canvas's own size can
@@ -235,18 +243,18 @@ export class Renderer {
   }
 
   /**
-   * Sets the entity the transform gizmo attaches to, or null for
-   * none. Only takes effect in edit mode.
+   * Sets the entities the transform gizmo acts on (the editor's
+   * selection). Only takes effect in edit mode.
    */
-  setGizmoTarget(handle: number | null): void {
-    this.gizmoTargetHandle = handle;
+  setGizmoTargets(handles: readonly number[]): void {
+    this.gizmoTargetHandles = handles;
   }
 
   /**
-   * Sets the callback fired when a gizmo drag finishes writing a new
-   * transform for an entity.
+   * Sets the callback fired when a gizmo drag finishes, with the
+   * entities whose transforms it wrote.
    */
-  setOnEntityTransformChanged(fn: (handle: number) => void): void {
+  setOnEntityTransformChanged(fn: (handles: readonly number[]) => void): void {
     this.onEntityTransformChanged = fn;
   }
 
@@ -349,14 +357,10 @@ export class Renderer {
       );
     }
 
-    // Editor-only; a null target (always the case in Runtime) detaches.
-    const gizmoHandle = this.editMode ? this.gizmoTargetHandle : null;
+    // Editor-only; an empty list (always the case in Runtime) detaches.
     this.transformGizmo.update(
       activeCamera,
-      gizmoHandle,
-      gizmoHandle !== null
-        ? this.sceneManager.getEntityMesh(gizmoHandle)
-        : null,
+      this.editMode ? this.gizmoTargetHandles : NO_GIZMO_TARGETS,
     );
 
     this.backend.render(this.threeScene, activeCamera);

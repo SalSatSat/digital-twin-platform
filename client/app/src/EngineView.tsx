@@ -16,15 +16,15 @@ interface EngineViewProps {
    */
   onEntityPicked?: (handle: number | null, opts: { additive: boolean }) => void;
   /**
-   * ECS handle the transform gizmo attaches to in edit mode (the
-   * editor's primary selection), or null for none.
+   * ECS handles the transform gizmo acts on in edit mode (the editor's
+   * whole selection). Pass a new array only when the selection changes.
    */
-  gizmoTarget: number | null;
+  gizmoTargets: readonly number[];
   /**
-   * Called when a gizmo drag finishes writing a new transform for the
-   * given entity, so React-side views of it (the Inspector) can refresh.
+   * Called when a gizmo drag finishes writing new transforms, so
+   * React-side views of those entities (the Inspector) can refresh.
    */
-  onEntityTransformChanged?: (handle: number) => void;
+  onEntityTransformChanged?: (handles: readonly number[]) => void;
 }
 
 /**
@@ -38,7 +38,7 @@ export function EngineView({
   onEngineReady,
   editMode,
   onEntityPicked,
-  gizmoTarget,
+  gizmoTargets,
   onEntityTransformChanged,
 }: EngineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -89,8 +89,8 @@ export function EngineView({
     renderer.setOnEntityPicked((handle, opts) =>
       onEntityPickedRef.current?.(handle, opts),
     );
-    renderer.setOnEntityTransformChanged((handle) =>
-      onEntityTransformChangedRef.current?.(handle),
+    renderer.setOnEntityTransformChanged((handles) =>
+      onEntityTransformChangedRef.current?.(handles),
     );
     let isCancelled = false;
     async function start() {
@@ -117,8 +117,8 @@ export function EngineView({
   }, [editMode]);
 
   useEffect(() => {
-    rendererRef.current?.setGizmoTarget(gizmoTarget);
-  }, [gizmoTarget]);
+    rendererRef.current?.setGizmoTargets(gizmoTargets);
+  }, [gizmoTargets]);
 
   return (
     <>

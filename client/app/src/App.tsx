@@ -113,6 +113,7 @@ function App() {
           engine={engine}
           selection={selection}
           onSelect={handleSelect}
+          onReparented={handleEntityTransformChanged}
         />
       )}
       <div className="flex-1 min-w-0 relative">
@@ -126,7 +127,7 @@ function App() {
           onEngineReady={handleEngineReady}
           editMode={isEditMode}
           onEntityPicked={handleViewportPick}
-          gizmoTarget={selection.primary}
+          gizmoTargets={selection.handles}
           onEntityTransformChanged={handleEntityTransformChanged}
         />
       </div>
