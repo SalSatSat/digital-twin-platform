@@ -82,8 +82,9 @@ position and rotation correctly composed through arbitrary depth.
 `HierarchySystem` must run after `MovementSystem` each tick for
 `WorldTransform` to reflect the current tick's movement rather than the
 previous one — this ordering is a convention, not yet enforced by code
-(tracked as existing technical debt, to be resolved by the future
-Scheduler refactor referenced in `systems/mod.rs`).
+(tracked as existing technical debt; the Scheduler refactor referenced in
+`systems/mod.rs` is deliberately deferred until a third system exists or a
+system needs another system's output, see the doc comment there).
 
 Any future code that reads `WorldTransform` can trust it reflects the
 current tick's state, without needing to know or care whether the

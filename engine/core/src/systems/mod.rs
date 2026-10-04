@@ -14,13 +14,20 @@ use crate::world::World;
 ///
 /// # Future Refactor — Scheduler
 ///
-/// Currently systems are called directly. The target design is a Scheduler
-/// that owns a collection of systems and runs them in a defined order each
-/// tick, with support for system ordering, dependencies, and parallel
-/// execution where components don't overlap. This refactor should be done
-/// once the full ECS loop is connected to the WASM boundary.
+/// Currently systems are called directly, in a fixed order, from
+/// `EngineWorld::tick` (engine/wasm/src/lib.rs). The target design is a
+/// Scheduler that owns a collection of systems and runs them in a defined
+/// order each tick, with support for system ordering, dependencies, and
+/// parallel execution where components don't overlap.
+///
+/// Deliberately deferred: with two systems and one ordering constraint
+/// (Hierarchy after Movement, ADR-024) a Scheduler would encode only that
+/// constraint and be redesigned by the first real workload. Revisit when a
+/// third system is added, or when a system needs another system's output
+/// beyond run order.
 // TODO(refactor): introduce a Scheduler that owns Vec<Box<dyn System>>
 // and drives the tick loop with ordering and dependency support.
+// Trigger: a third system, or an inter-system data dependency.
 pub trait System {
     /// Returns the name of this system for debugging and logging.
     fn name(&self) -> &str;

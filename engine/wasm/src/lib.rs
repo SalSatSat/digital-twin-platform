@@ -262,6 +262,9 @@ impl EngineWorld {
     /// delta_time is the elapsed time in seconds since the last tick.
     /// Pass the actual elapsed time from your JavaScript animation loop
     /// for frame-rate independent movement.
+    ///
+    /// Order matters: HierarchySystem must run after MovementSystem so
+    /// WorldTransform reflects this tick's movement (ADR-024).
     pub fn tick(&mut self, delta_time: f32) {
         self.movement_system.run(&mut self.world, delta_time);
         self.hierarchy_system.run(&mut self.world, delta_time);
