@@ -97,13 +97,19 @@ once per frame, and fan the events out through a typed client dispatcher.
    The same path covers a stopped render loop, which would otherwise let the
    queue grow without bound.
 
-8. **Client dispatcher.** A typed emitter owned by `Engine`, exposed as
-   `engine.events`, with `subscribe(kind, handler)` returning an unsubscribe
-   function. It accepts events from two sources: the engine drain, and
-   client-originated events published by TypeScript code. Phase 20 (GLB
-   loading) is expected to publish asset lifecycle events there, since
-   loaders run in the client; this is the reason Phase 20 depends on this
-   phase.
+8. **Client dispatcher.** A typed dispatcher owned by `Engine`, exposed as
+   `engine.events`, with batch delivery in the style of Unity's
+   `ObjectChangeEvents.changesPublished`: `subscribe(handler)` returns an
+   unsubscribe function, and each subscriber is called at most once per
+   frame with that frame's ordered, decoded events (never for an empty
+   frame). The engine drain is its first and, for now, only source. The
+   dispatcher is designed to also accept client-originated events published
+   by TypeScript code (a `publish` method), which is deferred until a
+   consumer needs it: Phase 20 (GLB loading) is expected to publish asset
+   lifecycle events there, since loaders run in the client, and this is the
+   reason Phase 20 depends on this phase. Subscribing and unsubscribing
+   during a dispatch take effect from the next dispatch, and a handler is
+   never called after it has unsubscribed.
 
 9. **Consumer contract.** Snapshot plus deltas. A consumer subscribes first
    and then fetches its snapshot, so no event falls in the gap. After
