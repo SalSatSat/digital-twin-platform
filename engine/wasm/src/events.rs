@@ -116,6 +116,18 @@ mod tests {
     }
 
     #[test]
+    fn event_kind_values_are_stable() {
+        // Mirrored in client/renderer/src/events.ts. Changing a value is a
+        // wire-format change: update both sides together.
+        assert_eq!(NONE, u32::MAX);
+        assert_eq!(KIND_ENTITY_SPAWNED, 0);
+        assert_eq!(KIND_ENTITY_DESPAWNED, 1);
+        assert_eq!(KIND_ENTITY_REPARENTED, 2);
+        assert_eq!(KIND_COMPONENT_CHANGED, 3);
+        assert_eq!(KIND_RESYNC, 4);
+    }
+
+    #[test]
     fn drain_on_empty_queue_returns_nothing() {
         let mut queue = EventQueue::new();
 
