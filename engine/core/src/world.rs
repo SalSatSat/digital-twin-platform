@@ -98,10 +98,45 @@ impl World {
         self.inner.contains(entity)
     }
 
-    /// Despawns an entity, removing it and all its components from the World.
-    /// Returns true if the entity existed and was removed, false otherwise.
-    pub fn despawn(&mut self, entity: Entity) -> bool {
-        self.inner.despawn(entity).is_ok()
+    /// Despawns an entity together with all of its descendants, removing
+    /// them and all their components from the World, and detaches the
+    /// entity from its parent so the hierarchy never holds a reference
+    /// to a dead entity. Entities without a HierarchyNode are despawned
+    /// on their own.
+    ///
+    /// Returns every entity that was despawned, children before parents
+    /// (the requested entity is last). Empty if the entity did not exist.
+    pub fn despawn(&mut self, entity: Entity) -> Vec<Entity> {
+        if !self.contains(entity) {
+            return Vec::new();
+        }
+
+        // Unlink from the parent first. A bare entity has no
+        // HierarchyNode, so there is nothing to unlink: ignore that error.
+        let _ = self.remove_parent(entity);
+
+        let mut despawned = Vec::new();
+        self.collect_subtree_children_first(entity, &mut despawned);
+        for &dead in &despawned {
+            let _ = self.inner.despawn(dead);
+        }
+        despawned
+    }
+
+    /// Appends `entity` and all its descendants to `out`, children before
+    /// their parent. Skips entities that no longer exist.
+    fn collect_subtree_children_first(&self, entity: Entity, out: &mut Vec<Entity>) {
+        if !self.contains(entity) {
+            return;
+        }
+        let children = self
+            .get_component::<HierarchyNode>(entity)
+            .map(|node| node.children.clone())
+            .unwrap_or_default();
+        for child in children {
+            self.collect_subtree_children_first(child, out);
+        }
+        out.push(entity);
     }
 
     /// Sets `child`'s parent to `new_parent`, maintaining full
@@ -475,9 +510,102 @@ mod tests {
 
         let result = world.despawn(entity);
 
-        assert!(result);
+        assert_eq!(result, vec![entity]);
         assert_eq!(world.entity_count(), 0);
         assert!(!world.contains(entity));
+    }
+
+    #[test]
+    fn world_despawn_child_removes_it_from_parents_children() {
+        // ARRANGE — a parent with two children
+        let mut world = World::new();
+        let parent = world.spawn_bundle(StaticObjectBundle::new("Parent", Vec3::ZERO));
+        let child_a = world.spawn_bundle(StaticObjectBundle::new("ChildA", Vec3::ZERO));
+        let child_b = world.spawn_bundle(StaticObjectBundle::new("ChildB", Vec3::ZERO));
+        world.set_parent(child_a, parent).unwrap();
+        world.set_parent(child_b, parent).unwrap();
+
+        // ACT
+        world.despawn(child_a);
+
+        // ASSERT — parent no longer lists the dead child; the sibling is untouched
+        let parent_node = world.get_component::<HierarchyNode>(parent).unwrap();
+        assert_eq!(parent_node.children, vec![child_b]);
+        assert!(world.contains(child_b));
+    }
+
+    #[test]
+    fn world_despawn_parent_despawns_all_descendants() {
+        // ARRANGE — Parent -> Child -> Grandchild
+        let mut world = World::new();
+        let parent = world.spawn_bundle(StaticObjectBundle::new("Parent", Vec3::ZERO));
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::ZERO));
+        let grandchild = world.spawn_bundle(StaticObjectBundle::new("Grandchild", Vec3::ZERO));
+        world.set_parent(child, parent).unwrap();
+        world.set_parent(grandchild, child).unwrap();
+
+        // ACT
+        world.despawn(parent);
+
+        // ASSERT — the whole subtree is gone, nothing is left orphaned
+        assert!(!world.contains(parent));
+        assert!(!world.contains(child));
+        assert!(!world.contains(grandchild));
+        assert_eq!(world.entity_count(), 0);
+    }
+
+    #[test]
+    fn world_despawn_parent_leaves_unrelated_entities_untouched() {
+        // ARRANGE — one tree to despawn, plus an unrelated root with its own child
+        let mut world = World::new();
+        let parent = world.spawn_bundle(StaticObjectBundle::new("Parent", Vec3::ZERO));
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::ZERO));
+        let other_root = world.spawn_bundle(StaticObjectBundle::new("OtherRoot", Vec3::ZERO));
+        let other_child = world.spawn_bundle(StaticObjectBundle::new("OtherChild", Vec3::ZERO));
+        world.set_parent(child, parent).unwrap();
+        world.set_parent(other_child, other_root).unwrap();
+
+        // ACT
+        world.despawn(parent);
+
+        // ASSERT — only the despawned subtree is affected
+        assert!(!world.contains(child));
+        assert!(world.contains(other_root));
+        assert!(world.contains(other_child));
+        let other_node = world.get_component::<HierarchyNode>(other_root).unwrap();
+        assert_eq!(other_node.children, vec![other_child]);
+        assert_eq!(world.entity_count(), 2);
+    }
+
+    #[test]
+    fn world_despawn_returns_subtree_children_first() {
+        // ARRANGE — Parent -> Child -> Grandchild
+        let mut world = World::new();
+        let parent = world.spawn_bundle(StaticObjectBundle::new("Parent", Vec3::ZERO));
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::ZERO));
+        let grandchild = world.spawn_bundle(StaticObjectBundle::new("Grandchild", Vec3::ZERO));
+        world.set_parent(child, parent).unwrap();
+        world.set_parent(grandchild, child).unwrap();
+
+        // ACT
+        let despawned = world.despawn(parent);
+
+        // ASSERT — deepest first, the requested entity last
+        assert_eq!(despawned, vec![grandchild, child, parent]);
+    }
+
+    #[test]
+    fn world_despawn_already_despawned_entity_returns_empty() {
+        // ARRANGE
+        let mut world = World::new();
+        let entity = world.spawn_bundle(StaticObjectBundle::new("Entity", Vec3::ZERO));
+        world.despawn(entity);
+
+        // ACT
+        let second = world.despawn(entity);
+
+        // ASSERT
+        assert!(second.is_empty());
     }
 
     #[test]

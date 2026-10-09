@@ -133,19 +133,27 @@ impl EngineWorld {
     /// Despawns an entity by handle, freeing its ECS memory and
     /// marking its handle slot as available for reuse.
     ///
+    /// Descendants are despawned with it and their handle slots are freed
+    /// too; the entity is also unlinked from its parent.
+    ///
     /// Returns true if the entity existed and was despawned.
     /// Returns false if the handle is invalid or already despawned.
     pub fn despawn_entity(&mut self, handle: u32) -> bool {
-        let slot = self.entity_handles.get_mut(handle as usize);
-        match slot {
-            Some(Some(entity)) => {
-                let entity = *entity;
-                self.world.despawn(entity);
-                self.entity_handles[handle as usize] = None;
-                true
+        let Some(Some(entity)) = self.entity_handles.get(handle as usize).copied() else {
+            return false;
+        };
+        let despawned = self.world.despawn(entity);
+        self.entity_handles[handle as usize] = None;
+        // Common case (no descendants) stays O(1); only a cascade pays
+        // for scanning the slots of the extra entities that died.
+        if despawned.len() > 1 {
+            for slot in self.entity_handles.iter_mut() {
+                if matches!(slot, Some(e) if despawned.contains(e)) {
+                    *slot = None;
+                }
             }
-            _ => false,
         }
+        true
     }
     /// Sets `child`'s parent to `parent` by handle.
     ///
@@ -722,6 +730,40 @@ mod tests {
     fn get_visible_returns_none_for_invalid_handle() {
         let world = EngineWorld::new();
         assert!(world.get_visible(999).is_none());
+    }
+
+    #[test]
+    fn despawn_entity_parent_invalidates_descendant_handles() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        let grandchild = world.spawn_static_object("Grandchild", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        assert_eq!(world.set_parent(grandchild, child, false), 0);
+
+        assert!(world.despawn_entity(parent));
+
+        assert_eq!(world.entity_count(), 0);
+        assert_eq!(world.get_visible(parent), None);
+        assert_eq!(world.get_visible(child), None);
+        assert_eq!(world.get_visible(grandchild), None);
+    }
+
+    #[test]
+    fn despawn_entity_child_leaves_parent_and_siblings_valid() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child_a = world.spawn_static_object("ChildA", 0.0, 0.0, 0.0);
+        let child_b = world.spawn_static_object("ChildB", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child_a, parent, false), 0);
+        assert_eq!(world.set_parent(child_b, parent, false), 0);
+
+        assert!(world.despawn_entity(child_a));
+
+        assert_eq!(world.get_visible(child_a), None);
+        assert_eq!(world.get_visible(parent), Some(true));
+        assert_eq!(world.get_visible(child_b), Some(true));
+        assert_eq!(world.entity_count(), 2);
     }
 
     #[test]
