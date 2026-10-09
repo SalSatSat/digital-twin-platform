@@ -21,7 +21,9 @@ use hecs::Entity;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
+mod events;
 mod reflection;
+use events::EventQueue;
 use reflection::ComponentKind;
 
 /// Converts a ReflectError into a human-readable message.
@@ -80,6 +82,8 @@ pub struct EngineWorld {
     /// The handle of the currently active camera.
     /// None means no camera has been set as active.
     active_camera_handle: Option<u32>,
+    /// Change events awaiting `drain_events` (ADR-036).
+    event_queue: EventQueue,
 }
 #[wasm_bindgen]
 impl EngineWorld {
@@ -93,11 +97,18 @@ impl EngineWorld {
             hierarchy_system: HierarchySystem::new(),
             entity_handles: Vec::new(),
             active_camera_handle: None,
+            event_queue: EventQueue::new(),
         }
     }
     /// Returns the number of entities currently in the world.
     pub fn entity_count(&self) -> u32 {
         self.world.entity_count()
+    }
+    /// Returns and clears the change events recorded since the last call
+    /// (ADR-036). Flat records of four u32 words: [kind, handle, a, b],
+    /// with u32::MAX meaning "none". Empty when nothing changed.
+    pub fn drain_events(&mut self) -> Vec<u32> {
+        self.event_queue.drain()
     }
     /// Spawns a dynamic entity at the given position with the given velocity.
     /// Returns a u32 handle that JavaScript uses to reference this entity.
@@ -144,15 +155,31 @@ impl EngineWorld {
             return false;
         };
         let despawned = self.world.despawn(entity);
-        self.entity_handles[handle as usize] = None;
-        // Common case (no descendants) stays O(1); only a cascade pays
-        // for scanning the slots of the extra entities that died.
-        if despawned.len() > 1 {
-            for slot in self.entity_handles.iter_mut() {
-                if matches!(slot, Some(e) if despawned.contains(e)) {
-                    *slot = None;
-                }
-            }
+        // Handles of every despawned entity, in the same children-first
+        // order. The common case (no descendants) stays O(1); only a
+        // cascade pays for the reverse lookup.
+        let despawned_handles: Vec<u32> = if despawned.len() > 1 {
+            let handle_of: std::collections::HashMap<Entity, u32> = self
+                .entity_handles
+                .iter()
+                .enumerate()
+                .filter_map(|(index, slot)| slot.map(|e| (e, index as u32)))
+                .collect();
+            despawned
+                .iter()
+                .filter_map(|e| handle_of.get(e).copied())
+                .collect()
+        } else {
+            vec![handle]
+        };
+        for &dead in &despawned_handles {
+            self.entity_handles[dead as usize] = None;
+            self.event_queue.push(
+                events::KIND_ENTITY_DESPAWNED,
+                dead,
+                events::NONE,
+                events::NONE,
+            );
         }
         // EngineWorld must never hold a handle to a freed slot.
         let active_camera_is_dead = self.active_camera_handle.is_some_and(|h| {
@@ -586,11 +613,24 @@ impl EngineWorld {
         // Reuse a despawned slot if available
         if let Some(index) = self.entity_handles.iter().position(|s| s.is_none()) {
             self.entity_handles[index] = Some(entity);
+            self.event_queue.push(
+                events::KIND_ENTITY_SPAWNED,
+                index as u32,
+                events::NONE,
+                events::NONE,
+            );
             return index as u32;
         }
         // No free slots — push a new entry
         self.entity_handles.push(Some(entity));
-        (self.entity_handles.len() - 1) as u32
+        let handle = (self.entity_handles.len() - 1) as u32;
+        self.event_queue.push(
+            events::KIND_ENTITY_SPAWNED,
+            handle,
+            events::NONE,
+            events::NONE,
+        );
+        handle
     }
     /// Resolves a JavaScript-facing u32 handle to its underlying Entity.
     /// Returns None if the handle is out of range or the slot is empty
@@ -813,6 +853,102 @@ mod tests {
         assert!(world.despawn_entity(cube));
 
         assert_eq!(world.get_active_camera(), Some(camera));
+    }
+
+    fn event(kind: u32, handle: u32) -> [u32; 4] {
+        [kind, handle, events::NONE, events::NONE]
+    }
+
+    #[test]
+    fn drain_events_is_empty_on_a_fresh_world() {
+        let mut world = EngineWorld::new();
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn spawn_static_object_records_entity_spawned() {
+        let mut world = EngineWorld::new();
+
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        assert_eq!(
+            world.drain_events(),
+            event(events::KIND_ENTITY_SPAWNED, handle).to_vec()
+        );
+    }
+
+    #[test]
+    fn spawn_dynamic_object_records_entity_spawned() {
+        let mut world = EngineWorld::new();
+
+        let handle = world.spawn_dynamic_object("Ball", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+        assert_eq!(
+            world.drain_events(),
+            event(events::KIND_ENTITY_SPAWNED, handle).to_vec()
+        );
+    }
+
+    #[test]
+    fn spawn_camera_records_entity_spawned() {
+        let mut world = EngineWorld::new();
+
+        let handle = world.spawn_camera("Scene Camera", 0.0, 0.0, 0.0, "Editor");
+
+        assert_eq!(
+            world.drain_events(),
+            event(events::KIND_ENTITY_SPAWNED, handle).to_vec()
+        );
+    }
+
+    #[test]
+    fn despawn_entity_parent_records_descendants_children_first() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        let grandchild = world.spawn_static_object("Grandchild", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        assert_eq!(world.set_parent(grandchild, child, false), 0);
+        world.drain_events();
+
+        assert!(world.despawn_entity(parent));
+
+        let expected: Vec<u32> = [
+            event(events::KIND_ENTITY_DESPAWNED, grandchild),
+            event(events::KIND_ENTITY_DESPAWNED, child),
+            event(events::KIND_ENTITY_DESPAWNED, parent),
+        ]
+        .concat();
+        assert_eq!(world.drain_events(), expected);
+    }
+
+    #[test]
+    fn despawn_entity_with_invalid_handle_records_nothing() {
+        let mut world = EngineWorld::new();
+        world.drain_events();
+
+        assert!(!world.despawn_entity(999));
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn reused_handle_slot_records_despawn_then_spawn_in_order() {
+        let mut world = EngineWorld::new();
+        let first = world.spawn_static_object("A", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert!(world.despawn_entity(first));
+        let second = world.spawn_static_object("B", 0.0, 0.0, 0.0);
+
+        assert_eq!(second, first);
+        let expected: Vec<u32> = [
+            event(events::KIND_ENTITY_DESPAWNED, first),
+            event(events::KIND_ENTITY_SPAWNED, second),
+        ]
+        .concat();
+        assert_eq!(world.drain_events(), expected);
     }
 
     #[test]
