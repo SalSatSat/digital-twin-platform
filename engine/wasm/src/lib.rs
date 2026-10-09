@@ -228,13 +228,28 @@ impl EngineWorld {
         let Some(parent) = self.resolve_handle(parent_handle) else {
             return 1;
         };
+        let old_parent_handle = self.parent_handle_of(child);
         let result = if world_position_stays {
             self.world.set_parent_keep_world(child, parent)
         } else {
             self.world.set_parent(child, parent)
         };
         match result {
-            Ok(()) => 0,
+            Ok(()) => {
+                // Setting the same parent again is an idempotent no-op.
+                if old_parent_handle != parent_handle {
+                    self.event_queue.push(
+                        events::KIND_ENTITY_REPARENTED,
+                        child_handle,
+                        old_parent_handle,
+                        parent_handle,
+                    );
+                    if world_position_stays {
+                        self.record_component_changed(child_handle, ComponentKind::LocalTransform);
+                    }
+                }
+                0
+            }
             Err(HierarchyError::EntityNotFound) => 1,
             Err(HierarchyError::WouldCreateCycle) => 2,
         }
@@ -250,13 +265,28 @@ impl EngineWorld {
         let Some(child) = self.resolve_handle(child_handle) else {
             return 1;
         };
+        let old_parent_handle = self.parent_handle_of(child);
         let result = if world_position_stays {
             self.world.remove_parent_keep_world(child)
         } else {
             self.world.remove_parent(child)
         };
         match result {
-            Ok(()) => 0,
+            Ok(()) => {
+                // A root has nothing to detach: no event.
+                if old_parent_handle != events::NONE {
+                    self.event_queue.push(
+                        events::KIND_ENTITY_REPARENTED,
+                        child_handle,
+                        old_parent_handle,
+                        events::NONE,
+                    );
+                    if world_position_stays {
+                        self.record_component_changed(child_handle, ComponentKind::LocalTransform);
+                    }
+                }
+                0
+            }
             Err(HierarchyError::EntityNotFound) => 1,
             // remove_parent's Rust API only has one error variant, but match
             // exhaustively rather than `_ => 1` so this breaks loudly at
@@ -297,7 +327,10 @@ impl EngineWorld {
             .world
             .set_world_transform(entity, Vec3::new(x, y, z), rotation)
         {
-            Ok(()) => 0,
+            Ok(()) => {
+                self.record_component_changed(handle, ComponentKind::LocalTransform);
+                0
+            }
             Err(HierarchyError::EntityNotFound) => 1,
             Err(HierarchyError::WouldCreateCycle) => {
                 unreachable!("set_world_transform cannot produce WouldCreateCycle")
@@ -443,12 +476,19 @@ impl EngineWorld {
         rz: f32,
         rw: f32,
     ) {
-        if let Some(Some(entity)) = self.entity_handles.get(handle as usize) {
-            let entity = *entity;
-            if let Ok(mut transform) = self.world.get_component_mut::<LocalTransform>(entity) {
+        let Some(entity) = self.resolve_handle(handle) else {
+            return;
+        };
+        let written = match self.world.get_component_mut::<LocalTransform>(entity) {
+            Ok(mut transform) => {
                 transform.position = Vec3::new(x, y, z);
                 transform.rotation = Quat::from_xyzw(rx, ry, rz, rw);
+                true
             }
+            Err(_) => false,
+        };
+        if written {
+            self.record_component_changed(handle, ComponentKind::LocalTransform);
         }
     }
 
@@ -507,7 +547,10 @@ impl EngineWorld {
             Err(e) => return Some(format!("invalid JSON: {e}")),
         };
         match (descriptor.from_json)(&mut self.world, entity, value) {
-            Ok(()) => None,
+            Ok(()) => {
+                self.record_component_changed(handle, kind);
+                None
+            }
             Err(e) => Some(reflect_error_to_message(e)),
         }
     }
@@ -640,6 +683,30 @@ impl EngineWorld {
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())
             .copied()
+    }
+
+    /// Handle of `entity`'s parent, or `events::NONE` for a root or an
+    /// entity without a HierarchyNode. A reverse lookup (O(slots)), which is
+    /// fine because only reparenting calls it.
+    fn parent_handle_of(&self, entity: Entity) -> u32 {
+        let parent = self
+            .world
+            .get_component::<HierarchyNode>(entity)
+            .ok()
+            .and_then(|node| node.parent);
+        parent
+            .and_then(|p| self.entity_handles.iter().position(|slot| *slot == Some(p)))
+            .map_or(events::NONE, |index| index as u32)
+    }
+
+    /// Records that `kind` changed on the entity behind `handle` (ADR-036).
+    fn record_component_changed(&mut self, handle: u32, kind: ComponentKind) {
+        self.event_queue.push(
+            events::KIND_COMPONENT_CHANGED,
+            handle,
+            kind.id(),
+            events::NONE,
+        );
     }
 }
 
@@ -857,6 +924,278 @@ mod tests {
 
     fn event(kind: u32, handle: u32) -> [u32; 4] {
         [kind, handle, events::NONE, events::NONE]
+    }
+
+    fn reparented(handle: u32, old_parent: u32, new_parent: u32) -> [u32; 4] {
+        [
+            events::KIND_ENTITY_REPARENTED,
+            handle,
+            old_parent,
+            new_parent,
+        ]
+    }
+
+    fn component_changed(handle: u32, kind: ComponentKind) -> [u32; 4] {
+        [
+            events::KIND_COMPONENT_CHANGED,
+            handle,
+            kind.id(),
+            events::NONE,
+        ]
+    }
+
+    #[test]
+    fn component_kind_ids_are_stable() {
+        assert_eq!(ComponentKind::LocalTransform.id(), 0);
+        assert_eq!(ComponentKind::Camera.id(), 1);
+        assert_eq!(ComponentKind::Velocity.id(), 2);
+        assert_eq!(ComponentKind::EntityInfo.id(), 3);
+    }
+
+    #[test]
+    fn set_parent_records_reparented_with_old_and_new_parent() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert_eq!(world.set_parent(child, parent, false), 0);
+
+        assert_eq!(
+            world.drain_events(),
+            reparented(child, events::NONE, parent).to_vec()
+        );
+    }
+
+    #[test]
+    fn set_parent_with_world_position_stays_also_records_local_transform_change() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 5.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert_eq!(world.set_parent(child, parent, true), 0);
+
+        let expected: Vec<u32> = [
+            reparented(child, events::NONE, parent),
+            component_changed(child, ComponentKind::LocalTransform),
+        ]
+        .concat();
+        assert_eq!(world.drain_events(), expected);
+    }
+
+    #[test]
+    fn set_parent_between_parents_records_old_and_new() {
+        let mut world = EngineWorld::new();
+        let parent_a = world.spawn_static_object("A", 0.0, 0.0, 0.0);
+        let parent_b = world.spawn_static_object("B", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent_a, false), 0);
+        world.drain_events();
+
+        assert_eq!(world.set_parent(child, parent_b, false), 0);
+
+        assert_eq!(
+            world.drain_events(),
+            reparented(child, parent_a, parent_b).to_vec()
+        );
+    }
+
+    #[test]
+    fn set_parent_to_same_parent_records_nothing() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, true), 0);
+        world.drain_events();
+
+        assert_eq!(world.set_parent(child, parent, true), 0);
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn rejected_set_parent_records_nothing() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        world.drain_events();
+
+        assert_eq!(world.set_parent(parent, child, false), 2);
+        assert_eq!(world.set_parent(child, 999, false), 1);
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn remove_parent_records_reparented_to_none() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        world.drain_events();
+
+        assert_eq!(world.remove_parent(child, false), 0);
+
+        assert_eq!(
+            world.drain_events(),
+            reparented(child, parent, events::NONE).to_vec()
+        );
+    }
+
+    #[test]
+    fn remove_parent_with_world_position_stays_also_records_local_transform_change() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 5.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        world.drain_events();
+
+        assert_eq!(world.remove_parent(child, true), 0);
+
+        let expected: Vec<u32> = [
+            reparented(child, parent, events::NONE),
+            component_changed(child, ComponentKind::LocalTransform),
+        ]
+        .concat();
+        assert_eq!(world.drain_events(), expected);
+    }
+
+    #[test]
+    fn remove_parent_on_a_root_records_nothing() {
+        let mut world = EngineWorld::new();
+        let root = world.spawn_static_object("Root", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert_eq!(world.remove_parent(root, true), 0);
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn set_world_transform_records_component_changed() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        let status = world.set_world_transform(handle, &[1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0]);
+
+        assert_eq!(status, 0);
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::LocalTransform).to_vec()
+        );
+    }
+
+    #[test]
+    fn repeated_transform_writes_in_one_frame_record_one_change() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        world.set_world_transform(handle, &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+        world.set_world_transform(handle, &[2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+        world.set_world_transform(handle, &[3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::LocalTransform).to_vec()
+        );
+    }
+
+    #[test]
+    fn rejected_set_world_transform_records_nothing() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert_eq!(
+            world.set_world_transform(999, &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
+            1
+        );
+        assert_eq!(world.set_world_transform(handle, &[0.0]), 2);
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn set_camera_transform_records_component_changed() {
+        let mut world = EngineWorld::new();
+        let camera = world.spawn_camera("Scene Camera", 0.0, 0.0, 0.0, "Editor");
+        world.drain_events();
+
+        world.set_camera_transform(camera, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0);
+
+        assert_eq!(
+            world.drain_events(),
+            component_changed(camera, ComponentKind::LocalTransform).to_vec()
+        );
+    }
+
+    #[test]
+    fn set_camera_transform_with_invalid_handle_records_nothing() {
+        let mut world = EngineWorld::new();
+        world.drain_events();
+
+        world.set_camera_transform(999, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0);
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn set_component_json_records_component_changed_with_kind_id() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+        let json = serde_json::json!({
+            "name": "Renamed",
+            "enabled": true,
+            "visible": true,
+            "category": "Default",
+            "contexts": ["Universal"]
+        });
+
+        let rejection = world.set_component_json(handle, "EntityInfo", &json.to_string());
+
+        assert!(rejection.is_none(), "write should succeed: {:?}", rejection);
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::EntityInfo).to_vec()
+        );
+    }
+
+    #[test]
+    fn rejected_set_component_json_records_nothing() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+        let unregistered_category = serde_json::json!({
+            "name": "Cube",
+            "enabled": true,
+            "visible": true,
+            "category": "NoSuchCategory",
+            "contexts": ["Universal"]
+        });
+
+        assert!(
+            world
+                .set_component_json(handle, "EntityInfo", "not json")
+                .is_some()
+        );
+        assert!(
+            world
+                .set_component_json(handle, "NoSuchKind", "{}")
+                .is_some()
+        );
+        assert!(world.set_component_json(999, "EntityInfo", "{}").is_some());
+        assert!(
+            world
+                .set_component_json(handle, "EntityInfo", &unregistered_category.to_string())
+                .is_some()
+        );
+
+        assert!(world.drain_events().is_empty());
     }
 
     #[test]

@@ -42,6 +42,18 @@ impl ComponentKind {
         }
     }
 
+    /// Stable numeric id used in change events (ADR-036). Explicit values,
+    /// not a cast of the enum, so reordering the enum cannot silently change
+    /// the wire format. Mirrored in TypeScript.
+    pub fn id(self) -> u32 {
+        match self {
+            ComponentKind::LocalTransform => 0,
+            ComponentKind::Camera => 1,
+            ComponentKind::Velocity => 2,
+            ComponentKind::EntityInfo => 3,
+        }
+    }
+
     /// Named from_str rather than implementing std::str::FromStr —
     /// deliberately avoids pulling in the trait (and its Err-type
     /// requirement) for what's just a fixed lookup table.
