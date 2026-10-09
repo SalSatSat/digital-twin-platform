@@ -267,7 +267,7 @@ _To be determined_
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 19 | Event Bus — `OnEntitySelected` and other platform events                                                                               | Phase 14   |
+| Phase 19 | Event Bus — engine-side entity change events (spawn, despawn, reparent, component change) drained once per frame into a typed client dispatcher; replaces the Hierarchy and gizmo polling and the Inspector revision counter. `OnEntitySelected` deferred until a consumer outside React and the renderer needs it (ADR-036)                                                                               | Phase 14   |
 | Phase 20 | GLB model loading at runtime                                                                                                           | Phase 19   |
 | Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20) so the technique is chosen once | Phase 17, Phase 20 |
 | Phase 22 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 26)                                            | Phase 13   |
