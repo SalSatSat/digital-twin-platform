@@ -1,0 +1,161 @@
+# ADR-036: Engine Event Bus (Engine-Side Change Queue, Client Dispatcher)
+
+## Status
+Accepted
+
+## Date
+2026-10-09
+
+## Context
+Editor UI keeps itself in sync with the ECS by polling and by hand-wired
+refresh counters:
+
+- The Hierarchy panel re-reads `listEntityHierarchy()` on a 1 s interval
+  (`EntityHierarchyPanel.tsx`), so a spawn, despawn or reparent is visible
+  up to a second late and the full JSON is re-parsed when nothing changed.
+- The transform gizmo re-reads the hierarchy on a 500 ms cadence
+  (`transform-gizmo.ts`), so it can be stale after a reparent.
+- The Inspector refreshes through a `transformRevision` counter bumped by
+  `handleEntityTransformChanged` in `App.tsx`. That handler also fires for
+  reparenting, so it carries two meanings.
+
+The ECS is authoritative (the viewport renders snapshots only), so the
+notification mechanism should come from the ECS and not from whichever
+TypeScript wrapper happened to perform the call. The
+README roadmap names `OnEntitySelected` as the headline event, but selection
+is client state by design (ADR-033) and has no consumer outside React and the
+renderer, which already receive it through props.
+
+Unity's `ObjectChangeEvents` is the reference point. It delivers a stream of
+change events recorded since the last frame (create/destroy hierarchy, change
+parent, change object or component properties), identified by instance id,
+and a destroyed object can no longer be resolved from its id. Consumers
+re-read state rather than receive it in the event.
+
+## Decision
+Record API-driven entity changes in an engine-side queue, drain the queue
+once per frame, and fan the events out through a typed client dispatcher.
+
+1. **Where events are recorded.** In `EngineWorld` (the `engine/wasm` crate),
+   not in `World`. Events carry `u32` handles, and the handle mapping
+   (`entity_handles`) lives only in `EngineWorld`. Reflection writes also go
+   through `get_component_mut` inside `reflection.rs`, which cannot be
+   intercepted at `World` level; `EngineWorld::set_component_json` is their
+   single choke point.
+
+2. **What is recorded.** Only API-driven mutations that pass through
+   `EngineWorld`:
+
+   | Boundary call | Events |
+   |---|---|
+   | `spawn_dynamic_object`, `spawn_static_object`, `spawn_camera` | `EntitySpawned(h)` |
+   | `despawn_entity` | `EntityDespawned(h)` for every despawned entity, children first (the list `World::despawn` returns; ADR-024 addendum) |
+   | `set_parent`, `remove_parent` | `EntityReparented(h, old, new)` only if the parent actually changed; plus `ComponentChanged(h, LocalTransform)` when `world_position_stays` rewrote the local transform |
+   | `set_world_transform` | `ComponentChanged(h, LocalTransform)` |
+   | `set_camera_transform` | `ComponentChanged(h, LocalTransform)` (it bypasses the two paths above) |
+   | `set_component_json` | `ComponentChanged(h, kind)` on success |
+
+   System-driven writes are **not** recorded: `MovementSystem` (via
+   `inner_mut`) and `HierarchySystem`'s `WorldTransform` write change every
+   dynamic entity every tick, which would flood the queue. Continuous state
+   stays snapshot-read. A future system that writes through `inner_mut` is
+   invisible to the bus by the same rule. `set_active_camera` is not an ECS
+   component change and has no consumer, so it is out of the initial set.
+
+3. **Wire format.** `EngineWorld::drain_events()` returns a flat `Vec<u32>`
+   (a `Uint32Array` in JavaScript) of fixed four-word records
+   `[kind, handle, a, b]`, with `u32::MAX` meaning "none". Kinds:
+   `EntitySpawned`, `EntityDespawned`, `EntityReparented` (a = old parent,
+   b = new parent), `ComponentChanged` (a = component kind id), and
+   `Resync`. Each `ComponentKind` gets a stable numeric id defined next to the
+   enum, mirrored in TypeScript, and pinned by a WASM test, following the
+   existing status-code convention at the boundary. Events carry ids only;
+   consumers re-read state through the existing getters.
+
+4. **Ordering and dedupe.** The stream is ordered. Handle slots are reused,
+   so `EntityDespawned(h)` followed by `EntitySpawned(h)` within one frame is
+   a real sequence and structural events are never coalesced. A
+   `ComponentChanged(h, kind)` is dropped only if an identical record is
+   already queued and no structural event for `h` has been queued since.
+
+5. **Delivery.** `Engine.tick` drains once, after the WASM `tick`, copies the
+   records out, then dispatches. A handler that mutates the engine therefore
+   only enqueues events for the next frame; there is no re-entrancy into WASM
+   during dispatch. Events recorded between frames (React handlers, gizmo
+   writes, `SceneManager.update`) are delivered at the next `Engine.tick`.
+   The engine records in both Editor and Runtime; consumers decide what to do
+   with the events.
+
+6. **Handler isolation.** `Engine.tick` runs inside the render loop's
+   `try/catch`, which stops the loop on any throw. The dispatcher therefore
+   catches and logs exceptions per handler, so a UI bug cannot stop rendering.
+
+7. **Bounded queue.** The queue has a fixed capacity. On overflow it discards
+   its contents and the next drain returns a single `Resync` record, which
+   tells consumers to refetch a snapshot. Structural events are never silently
+   dropped one by one, since that would corrupt consumers' view of handles.
+   The same path covers a stopped render loop, which would otherwise let the
+   queue grow without bound.
+
+8. **Client dispatcher.** A typed emitter owned by `Engine`, exposed as
+   `engine.events`, with `subscribe(kind, handler)` returning an unsubscribe
+   function. It accepts events from two sources: the engine drain, and
+   client-originated events published by TypeScript code. Phase 20 (GLB
+   loading) is expected to publish asset lifecycle events there, since
+   loaders run in the client; this is the reason Phase 20 depends on this
+   phase.
+
+9. **Consumer contract.** Snapshot plus deltas. A consumer subscribes first
+   and then fetches its snapshot, so no event falls in the gap. After
+   `EntityDespawned(h)` a consumer must not read state for `h` until an
+   `EntitySpawned(h)` arrives. On `Resync` or on engine re-creation it
+   refetches. A consumer marks itself dirty on events and refetches at most
+   once per dispatch batch, so boundary-respawn churn in Runtime costs at
+   most one refetch per frame.
+
+10. **Selection stays off the bus.** `OnEntitySelected` is deferred. Its three
+    consumers (Hierarchy panel, Inspector, gizmo) already receive selection
+    through props (ADR-033), so adding it now would build a mechanism with no
+    consumer. The trigger to revisit is the first consumer outside React and
+    the renderer, for example a Console panel (Phase 29) or sync presence
+    (Phase 28). If that happens, a client-published `SelectionChanged` event
+    carrying the existing `Selection` shape fits the dispatcher without moving
+    ownership.
+
+## Reasoning
+Putting the queue in the ECS layer keeps the ECS authoritative: a future
+loader or script that mutates through `EngineWorld` is observed without every
+call site remembering to publish. Recording at the boundary and not in `World`
+follows the handle constraint above, and the existing boundary tests already
+exercise exactly that layer.
+
+Excluding system-driven writes is a design decision, not something Unity's
+documentation states, but it matches the project rule that the viewport
+renders snapshots and keeps the queue's volume proportional to user actions
+and not to entity count.
+
+Id-only events with a per-frame drain mirror Unity's model, avoid JSON
+allocation on empty frames, and let consumers reuse the getters they already
+have. Draining by return value, not by pushing a callback out of WASM, avoids
+re-entrancy hazards across the boundary.
+
+A client-only bus was the cheaper alternative, with the TypeScript `Engine`
+wrappers publishing after each call. It was rejected because it would miss any
+mutation not routed through those wrappers and would put the authority for
+"what changed" outside the ECS.
+
+## Consequences
+Hierarchy refresh, the gizmo's hierarchy re-read and `transformRevision`
+become event-driven, removing both polls and the overloaded
+`handleEntityTransformChanged`. Live Inspector updates during a gizmo drag
+become possible (the fields currently remount on a key change), but are a
+follow-up and not part of the first migration.
+
+New obligations: the TypeScript and Rust kind constants must stay in step
+(pinned by a test); every new `EngineWorld` mutator must record its event
+(a missing one is a stale-UI bug, so each is covered by a boundary test); and
+systems that write through `inner_mut` are intentionally unobserved.
+
+Migration is one consumer per commit, each verified in the browser: (1) queue,
+drain and dispatcher with tests and no consumers, (2) Hierarchy panel,
+(3) transform gizmo, (4) Inspector and removal of `transformRevision`.
