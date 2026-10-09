@@ -125,7 +125,7 @@ test-engine: ## Run Rust engine tests
 .PHONY: test-client
 test-client: ## Run frontend tests
 	@echo "-> Testing client..."
-	cd $(CLIENT_DIR)/app && pnpm test
+	cd $(CLIENT_DIR)/renderer && npx tsc --noEmit && pnpm test
 
 .PHONY: test-server
 test-server: ## Run Go server tests
