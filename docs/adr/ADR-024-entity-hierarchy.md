@@ -128,3 +128,21 @@ current parent. It computes the parent's world transform by composing
 `WorldTransform`, which is only refreshed when `HierarchySystem` runs. The
 transform gizmo (ADR-034) uses the same function through the WASM
 `set_world_transform`.
+
+## Addendum: Hierarchy-Aware Despawn (2026-10-09)
+This ADR did not say what happens to the hierarchy when an entity is
+despawned. `World::despawn` was a plain removal: it left the entity listed in
+its parent's `children`, and left a despawned parent's children pointing at a
+dead `parent`. `HierarchySystem` starts propagation only from roots, so those
+children would never have been updated again, and the Hierarchy panel would
+have shown them as roots. The defect was latent, because no UI path despawned
+a parent: scene unload and boundary respawn despawn individual entities.
+
+`World::despawn` now unlinks the entity from its parent and despawns all of
+its descendants, as in Unity, where destroying a GameObject destroys its
+children. It returns every despawned entity, children first and the requested
+entity last. Entities without a `HierarchyNode` are despawned on their own.
+The WASM `despawn_entity` keeps its `u32 -> bool` signature and frees the
+handle slot of every entity in that list, so descendants' handles become
+invalid together with their parent's. The returned list is also what the
+Phase 19 event queue will use to emit one despawn event per entity.

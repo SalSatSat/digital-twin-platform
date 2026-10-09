@@ -767,6 +767,43 @@ mod tests {
     }
 
     #[test]
+    fn despawn_entity_active_camera_clears_active_camera() {
+        let mut world = EngineWorld::new();
+        let camera = world.spawn_camera("Scene Camera", 0.0, 0.0, 0.0, "Editor");
+        world.set_active_camera(camera);
+        assert_eq!(world.get_active_camera(), Some(camera));
+
+        assert!(world.despawn_entity(camera));
+
+        assert_eq!(world.get_active_camera(), None);
+    }
+
+    #[test]
+    fn despawn_entity_parent_of_active_camera_clears_active_camera() {
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Rig", 0.0, 0.0, 0.0);
+        let camera = world.spawn_camera("Scene Camera", 0.0, 0.0, 0.0, "Editor");
+        assert_eq!(world.set_parent(camera, parent, false), 0);
+        world.set_active_camera(camera);
+
+        assert!(world.despawn_entity(parent));
+
+        assert_eq!(world.get_active_camera(), None);
+    }
+
+    #[test]
+    fn despawn_entity_unrelated_entity_keeps_active_camera() {
+        let mut world = EngineWorld::new();
+        let camera = world.spawn_camera("Scene Camera", 0.0, 0.0, 0.0, "Editor");
+        let cube = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.set_active_camera(camera);
+
+        assert!(world.despawn_entity(cube));
+
+        assert_eq!(world.get_active_camera(), Some(camera));
+    }
+
+    #[test]
     fn get_visible_reflects_value_written_via_reflection() {
         let mut world = EngineWorld::new();
         let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
