@@ -134,7 +134,8 @@ impl EngineWorld {
     /// marking its handle slot as available for reuse.
     ///
     /// Descendants are despawned with it and their handle slots are freed
-    /// too; the entity is also unlinked from its parent.
+    /// too; the entity is also unlinked from its parent. If the active
+    /// camera is among the despawned entities, the active camera is cleared.
     ///
     /// Returns true if the entity existed and was despawned.
     /// Returns false if the handle is invalid or already despawned.
@@ -152,6 +153,17 @@ impl EngineWorld {
                     *slot = None;
                 }
             }
+        }
+        // EngineWorld must never hold a handle to a freed slot.
+        let active_camera_is_dead = self.active_camera_handle.is_some_and(|h| {
+            self.entity_handles
+                .get(h as usize)
+                .copied()
+                .flatten()
+                .is_none()
+        });
+        if active_camera_is_dead {
+            self.active_camera_handle = None;
         }
         true
     }
