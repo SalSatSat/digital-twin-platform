@@ -1,4 +1,5 @@
 import init, { EngineWorld } from "dt-engine-wasm";
+import { EventDispatcher, drainAndDispatch } from "./events";
 
 // ── Errors ────────────────────────────────────────────────
 /**
@@ -56,6 +57,13 @@ export class Engine {
   private engineWorld: EngineWorld | null = null;
   private initialized = false;
 
+  /**
+   * Per-frame change events from the ECS (ADR-036), delivered at the end of
+   * tick(). Each subscriber receives that frame's ordered batch. Subscribe
+   * first, then fetch your snapshot, so no event falls in the gap.
+   */
+  readonly events = new EventDispatcher();
+
   // ── Lifecycle ─────────────────────────────────────────────
   /**
    * Loads the WASM module and creates the ECS world.
@@ -74,6 +82,7 @@ export class Engine {
     this.engineWorld?.free();
     this.engineWorld = null;
     this.initialized = false;
+    this.events.clear();
   }
 
   private assertInitialized(): void {
@@ -165,6 +174,10 @@ export class Engine {
   tick(deltaTime: number): void {
     this.assertInitialized();
     this.engineWorld!.tick(deltaTime);
+    // Drain after the systems have run. Events recorded since the last tick
+    // (UI edits, gizmo writes, SceneManager.update) arrive here, one frame
+    // later, in the order they happened.
+    drainAndDispatch(this.engineWorld!, this.events);
   }
 
   // ── Cameras ───────────────────────────────────────────────

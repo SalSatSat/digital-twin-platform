@@ -163,3 +163,20 @@ export class EventDispatcher {
     this.subscriptions.clear();
   }
 }
+
+/** Anything that can hand over a drained batch: the WASM `EngineWorld`. */
+export interface EventSource {
+  drain_events(): Uint32Array;
+}
+
+/**
+ * Drains the source exactly once per call, even when nobody is subscribed
+ * (so the engine's queue never grows), decodes the words, and dispatches
+ * them as one batch.
+ */
+export function drainAndDispatch(
+  source: EventSource,
+  dispatcher: EventDispatcher,
+): void {
+  dispatcher.dispatch(decodeEvents(source.drain_events()));
+}

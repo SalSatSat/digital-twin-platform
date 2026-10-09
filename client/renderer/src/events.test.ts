@@ -5,6 +5,7 @@ import {
   EventDispatcher,
   NONE,
   decodeEvents,
+  drainAndDispatch,
   type EngineEvent,
 } from "./events";
 
@@ -234,5 +235,50 @@ describe("EventDispatcher", () => {
     dispatcher.dispatch([spawned(2)]);
 
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("drainAndDispatch", () => {
+  it("decodes the drained words and dispatches them as one batch", () => {
+    const dispatcher = new EventDispatcher();
+    const handler = vi.fn();
+    dispatcher.subscribe(handler);
+    const source = {
+      drain_events: vi.fn(() =>
+        words(
+          [EVENT_KIND.EntitySpawned, 1, NONE, NONE],
+          [EVENT_KIND.EntityDespawned, 2, NONE, NONE],
+        ),
+      ),
+    };
+
+    drainAndDispatch(source, dispatcher);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith([
+      { kind: "entitySpawned", handle: 1 },
+      { kind: "entityDespawned", handle: 2 },
+    ]);
+  });
+
+  it("drains the source once per call even when nobody is subscribed", () => {
+    const dispatcher = new EventDispatcher();
+    const source = { drain_events: vi.fn(() => new Uint32Array(0)) };
+
+    drainAndDispatch(source, dispatcher);
+    drainAndDispatch(source, dispatcher);
+
+    expect(source.drain_events).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls no subscribers when the drain is empty", () => {
+    const dispatcher = new EventDispatcher();
+    const handler = vi.fn();
+    dispatcher.subscribe(handler);
+    const source = { drain_events: vi.fn(() => new Uint32Array(0)) };
+
+    drainAndDispatch(source, dispatcher);
+
+    expect(handler).not.toHaveBeenCalled();
   });
 });
