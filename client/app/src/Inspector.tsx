@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { Engine } from "@dt-platform/renderer";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { affectsEntity, type Engine } from "@dt-platform/renderer";
 import type { FieldRendererProps } from "./inspector/FieldRenderer";
 import { CameraField } from "./inspector/CameraField";
 import { EntityInfoField } from "./inspector/EntityInfoField";
@@ -44,6 +44,16 @@ export function Inspector({
     }>;
     return Object.fromEntries(entries.map((e) => [e.kind, e.display_name]));
   }, [engine]);
+
+  // Re-render when the selected entity is spawned, despawned or resynced: the
+  // component list below is read during render and would otherwise go stale.
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (!engine || selectedHandle === null) return;
+    return engine.events.subscribe((batch) => {
+      if (affectsEntity(batch, selectedHandle)) rerender();
+    });
+  }, [engine, selectedHandle]);
 
   function toggleCollapsed(kind: string) {
     setCollapsed((prev) => ({ ...prev, [kind]: !prev[kind] }));

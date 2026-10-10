@@ -4,6 +4,8 @@ import {
   EVENT_KIND,
   EventDispatcher,
   NONE,
+  affectsComponent,
+  affectsEntity,
   affectsEntityListing,
   affectsHierarchy,
   decodeEvents,
@@ -359,6 +361,102 @@ describe("affectsEntityListing", () => {
   it("is true if any event in a mixed batch qualifies", () => {
     expect(
       affectsEntityListing([changed("LocalTransform"), changed("EntityInfo")]),
+    ).toBe(true);
+  });
+});
+
+const changedOn = (
+  handle: number,
+  component: ComponentKindName,
+): EngineEvent => ({ kind: "componentChanged", handle, component });
+
+describe("affectsEntity", () => {
+  it("is false for an empty batch", () => {
+    expect(affectsEntity([], 5)).toBe(false);
+  });
+
+  it("is true for a resync", () => {
+    expect(affectsEntity([resync], 5)).toBe(true);
+  });
+
+  it.each([
+    ["a spawn", spawned(5)],
+    ["a despawn", despawned(5)],
+  ])("is true for %s of that handle", (_label, event) => {
+    expect(affectsEntity([event], 5)).toBe(true);
+  });
+
+  it.each([
+    ["a spawn", spawned(6)],
+    ["a despawn", despawned(6)],
+  ])("is false for %s of a different handle", (_label, event) => {
+    expect(affectsEntity([event], 5)).toBe(false);
+  });
+
+  it.each([
+    ["a reparent", reparented(5)],
+    ["a component change", changedOn(5, "LocalTransform")],
+  ])(
+    "is false for %s, which changes values and not what exists",
+    (_label, event) => {
+      expect(affectsEntity([event], 5)).toBe(false);
+    },
+  );
+
+  it("is true if any event in a mixed batch qualifies", () => {
+    expect(affectsEntity([changedOn(6, "Camera"), despawned(5)], 5)).toBe(true);
+  });
+});
+
+describe("affectsComponent", () => {
+  it("is false for an empty batch", () => {
+    expect(affectsComponent([], 5, "LocalTransform")).toBe(false);
+  });
+
+  it("is true for a change to exactly that component on that handle", () => {
+    expect(
+      affectsComponent([changedOn(5, "LocalTransform")], 5, "LocalTransform"),
+    ).toBe(true);
+  });
+
+  it("is false for a different component on the same handle", () => {
+    expect(
+      affectsComponent([changedOn(5, "Camera")], 5, "LocalTransform"),
+    ).toBe(false);
+  });
+
+  it("is false for the same component on a different handle", () => {
+    expect(
+      affectsComponent([changedOn(6, "LocalTransform")], 5, "LocalTransform"),
+    ).toBe(false);
+  });
+
+  it("is true for a resync", () => {
+    expect(affectsComponent([resync], 5, "LocalTransform")).toBe(true);
+  });
+
+  it.each([
+    ["a spawn", spawned(5)],
+    ["a despawn", despawned(5)],
+  ])("is true for %s of that handle", (_label, event) => {
+    expect(affectsComponent([event], 5, "LocalTransform")).toBe(true);
+  });
+
+  it("is false for a spawn of a different handle", () => {
+    expect(affectsComponent([spawned(6)], 5, "LocalTransform")).toBe(false);
+  });
+
+  it("is false for a reparent alone, since the accompanying LocalTransform change is what counts", () => {
+    expect(affectsComponent([reparented(5)], 5, "LocalTransform")).toBe(false);
+  });
+
+  it("is true if any event in a mixed batch qualifies", () => {
+    expect(
+      affectsComponent(
+        [changedOn(6, "Camera"), changedOn(5, "LocalTransform")],
+        5,
+        "LocalTransform",
+      ),
     ).toBe(true);
   });
 });

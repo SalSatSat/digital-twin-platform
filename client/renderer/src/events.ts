@@ -211,3 +211,43 @@ export function affectsEntityListing(events: readonly EngineEvent[]): boolean {
       (event.kind === "componentChanged" && event.component === "EntityInfo"),
   );
 }
+
+/**
+ * True if the batch can change which components the entity behind `handle`
+ * has, or what any of them holds: a resync, or a spawn or despawn of that
+ * handle (slots are reused, so a despawn and a spawn of the same handle can
+ * arrive in one batch).
+ */
+export function affectsEntity(
+  events: readonly EngineEvent[],
+  handle: number,
+): boolean {
+  return events.some(
+    (event) =>
+      event.kind === "resync" ||
+      ((event.kind === "entitySpawned" || event.kind === "entityDespawned") &&
+        event.handle === handle),
+  );
+}
+
+/**
+ * True if the batch can change the value of one component on one entity:
+ * anything that affects the entity, or a `componentChanged` for exactly that
+ * handle and component. A reparent alone does not count; the `LocalTransform`
+ * change that accompanies a world-preserving reparent does.
+ */
+export function affectsComponent(
+  events: readonly EngineEvent[],
+  handle: number,
+  component: ComponentKindName,
+): boolean {
+  return (
+    affectsEntity(events, handle) ||
+    events.some(
+      (event) =>
+        event.kind === "componentChanged" &&
+        event.handle === handle &&
+        event.component === component,
+    )
+  );
+}
