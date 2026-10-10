@@ -163,3 +163,47 @@ systems that write through `inner_mut` are intentionally unobserved.
 Migration is one consumer per commit, each verified in the browser: (1) queue,
 drain and dispatcher with tests and no consumers, (2) Hierarchy panel,
 (3) transform gizmo, (4) Inspector and removal of `transformRevision`.
+
+## Addendum: Implementation Notes (2026-10-10)
+Phase 19 shipped as decided, in the migration order above. What the
+implementation added or corrected:
+
+- **Prerequisite found while tracing mutation paths.** `World::despawn` did
+  not unlink an entity from its parent or cascade to its children, so it was
+  made hierarchy-aware first (ADR-024 addendum). It returns the despawned
+  entities children first, which is the order of the despawn events, and
+  `EngineWorld` frees every one of their handles and clears the active
+  camera if it was among them.
+- **Recording.** `EntitySpawned` is recorded once, in
+  `EngineWorld::allocate_handle`, the single path every spawn takes.
+  `ComponentKind::id()` returns explicit values, and both the Rust values and
+  the TypeScript mirror are pinned by tests.
+- **Consumers.** `events.ts` holds the per-batch predicates
+  (`affectsHierarchy`, `affectsEntityListing`, `affectsEntity`,
+  `affectsComponent`). The gizmo keeps its ancestor map in `ParentMap`, which
+  events mark dirty and which is no longer re-read when the selection
+  changes. Inspector fields read through `useSyncExternalStore` and refresh
+  in place. Remounting on `componentChanged` was rejected: a field's own
+  debounced write echoes back as an event, and a remount would steal focus
+  mid-typing. A queued local edit wins over external refreshes.
+  `transformRevision`, `onReparented` and the gizmo's commit hook were
+  removed.
+- **Boundary respawn is now in place** (`respawn.ts`). The event stream
+  exposed that despawn-then-spawn destroyed an entity's children through the
+  cascade and left their meshes in the viewport. The entity now keeps its
+  handle, id and children, and its world pose and velocity are written
+  instead. Only entities spawned dynamic respawn, as the old doc comment
+  claimed (a static entity past the boundary used to be recreated as a
+  moving one). The reset velocity (1, 0, 0) is kept for parity and ignores
+  the velocity the scene defined for the entity, a pre-existing quirk.
+- **Measured in the browser.** An idle scene and Runtime movement emit no
+  events. A gizmo drag or camera orbit emits at most one `componentChanged`
+  per frame. The Hierarchy panel refetches on load, rename and reparent, and
+  not on idle, gizmo drag or orbit.
+- **Still deferred.** Client-published events (`publish`, Phase 20) and
+  `OnEntitySelected`, per decisions 8 and 10. Selection is still pruned on
+  engine-ready and mode toggle, not on `EntityDespawned`. `SceneManager`
+  drops entities that vanish by polling `getPosition` and does not remove
+  their meshes; that path is reachable only by a despawn it did not
+  initiate, which no code does today. Use `EntityDespawned` there when a
+  delete-entity UI or Phase 20 unloading needs it.
