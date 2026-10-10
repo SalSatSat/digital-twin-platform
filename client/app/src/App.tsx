@@ -18,9 +18,6 @@ function isEditorPath(): boolean {
 function App() {
   const [engine, setEngine] = useState<Engine | null>(null);
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
-  // Bumped when a gizmo drag finishes, so the Inspector re-reads the
-  // dragged entity's transform (its fields only read the ECS on mount).
-  const [transformRevision, setTransformRevision] = useState(0);
   const [isEditMode, setIsEditMode] = useState(isEditorPath);
 
   // Read inside the stable callbacks below instead of closing over
@@ -89,11 +86,6 @@ function App() {
     handleSelect(handle, opts);
   };
 
-  // Fired by the transform gizmo when a drag finishes.
-  const handleEntityTransformChanged = (): void => {
-    setTransformRevision((r) => r + 1);
-  };
-
   // Navigates between "/" and "/editor" via pushState rather than a
   // real link/redirect, so the Engine/Renderer are never torn down —
   // scene state (entities, camera position, selection) survives the
@@ -113,7 +105,6 @@ function App() {
           engine={engine}
           selection={selection}
           onSelect={handleSelect}
-          onReparented={handleEntityTransformChanged}
         />
       )}
       <div className="flex-1 min-w-0 relative">
@@ -128,15 +119,10 @@ function App() {
           editMode={isEditMode}
           onEntityPicked={handleViewportPick}
           gizmoTargets={selection.handles}
-          onEntityTransformChanged={handleEntityTransformChanged}
         />
       </div>
       {isEditMode && (
-        <Inspector
-          engine={engine}
-          selectedHandle={selection.primary}
-          transformRevision={transformRevision}
-        />
+        <Inspector engine={engine} selectedHandle={selection.primary} />
       )}
     </div>
   );

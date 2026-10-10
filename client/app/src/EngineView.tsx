@@ -20,11 +20,6 @@ interface EngineViewProps {
    * whole selection). Pass a new array only when the selection changes.
    */
   gizmoTargets: readonly number[];
-  /**
-   * Called when a gizmo drag finishes writing new transforms, so
-   * React-side views of those entities (the Inspector) can refresh.
-   */
-  onEntityTransformChanged?: (handles: readonly number[]) => void;
 }
 
 /**
@@ -39,7 +34,6 @@ export function EngineView({
   editMode,
   onEntityPicked,
   gizmoTargets,
-  onEntityTransformChanged,
 }: EngineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // The view gizmo's own small canvas — a separate THREE.WebGPURenderer,
@@ -64,12 +58,6 @@ export function EngineView({
     onEntityPickedRef.current = onEntityPicked;
   }, [onEntityPicked]);
 
-  // Same latest-callback pattern, for the gizmo's transform-changed callback.
-  const onEntityTransformChangedRef = useRef(onEntityTransformChanged);
-  useEffect(() => {
-    onEntityTransformChangedRef.current = onEntityTransformChanged;
-  }, [onEntityTransformChanged]);
-
   useEffect(() => {
     if (
       !canvasRef.current ||
@@ -88,9 +76,6 @@ export function EngineView({
     rendererRef.current = renderer;
     renderer.setOnEntityPicked((handle, opts) =>
       onEntityPickedRef.current?.(handle, opts),
-    );
-    renderer.setOnEntityTransformChanged((handles) =>
-      onEntityTransformChangedRef.current?.(handles),
     );
     let isCancelled = false;
     async function start() {

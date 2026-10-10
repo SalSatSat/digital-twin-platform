@@ -7,12 +7,6 @@ interface EntityHierarchyPanelProps {
   engine: Engine | null;
   selection: Selection;
   onSelect: (handle: number, opts: { additive: boolean }) => void;
-  /**
-   * Called after a drag-and-drop reparent succeeds. Reparenting keeps the
-   * entity's world pose, which rewrites its LocalTransform, so the
-   * Inspector needs to re-read it.
-   */
-  onReparented?: () => void;
 }
 
 /**
@@ -38,7 +32,6 @@ export function EntityHierarchyPanel({
   engine,
   selection,
   onSelect,
-  onReparented,
 }: EntityHierarchyPanelProps) {
   const [nodes, setNodes] = useState<EntityHierarchyNode[]>([]);
   const [draggedHandle, setDraggedHandle] = useState<number | null>(null);
@@ -95,7 +88,6 @@ export function EntityHierarchyPanel({
     }
     try {
       engine.setParent(draggedHandle, targetHandle);
-      onReparented?.();
       setDropError(null);
       // The list refreshes from the reparent event on the next frame.
     } catch (e) {
@@ -108,7 +100,6 @@ export function EntityHierarchyPanel({
     if (draggedHandle === null) return;
     try {
       engine.removeParent(draggedHandle);
-      onReparented?.();
       setDropError(null);
     } catch (e) {
       setDropError(e instanceof HierarchyError ? e.message : String(e));

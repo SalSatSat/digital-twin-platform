@@ -49,8 +49,6 @@ export class TransformGizmo {
   private parents: ParentMap;
   private unsubscribeEvents: () => void;
   private dragStart: DragStart | null = null;
-  private onTransformCommitted: ((handles: readonly number[]) => void) | null =
-    null;
 
   constructor(
     scene: THREE.Scene,
@@ -83,11 +81,6 @@ export class TransformGizmo {
     this.controls.addEventListener("objectChange", this.onObjectChange);
     this.controls.addEventListener("mouseUp", this.onMouseUp);
     scene.add(this.controls.getHelper());
-  }
-
-  /** Called when a drag finishes, with the entities it moved. */
-  setOnTransformCommitted(fn: (handles: readonly number[]) => void): void {
-    this.onTransformCommitted = fn;
   }
 
   /**
@@ -257,10 +250,6 @@ export class TransformGizmo {
   };
 
   private onMouseUp = (): void => {
-    const start = this.dragStart;
     this.dragStart = null;
-    if (start !== null && start.targets.length > 0) {
-      this.onTransformCommitted?.(start.targets.map((t) => t.handle));
-    }
   };
 }

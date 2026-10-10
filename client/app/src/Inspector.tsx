@@ -15,19 +15,9 @@ const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
 interface InspectorProps {
   engine: Engine | null;
   selectedHandle: number | null;
-  /**
-   * Bumped after an external write to the selected entity's transform
-   * (the viewport gizmo). LocalTransform's fields read the ECS only on
-   * mount, so this is part of their key to force a re-read.
-   */
-  transformRevision: number;
 }
 
-export function Inspector({
-  engine,
-  selectedHandle,
-  transformRevision,
-}: InspectorProps) {
+export function Inspector({ engine, selectedHandle }: InspectorProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   // Reads component section-header names from the reflection registry
@@ -97,10 +87,9 @@ export function Inspector({
       {componentKinds.map((kind) => {
         const Renderer = fieldRegistry[kind];
         const isCollapsed = collapsed[kind] ?? false;
-        const revision = kind === "LocalTransform" ? transformRevision : 0;
         return (
           <div
-            key={`${kind}-${selectedHandle}-${revision}`}
+            key={`${kind}-${selectedHandle}`}
             className="border-b border-border"
           >
             <button

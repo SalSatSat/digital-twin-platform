@@ -53,9 +53,6 @@ export class Renderer {
   // ECS handles the transform gizmo acts on (edit mode only), fed from
   // the editor's whole selection via setGizmoTargets.
   private gizmoTargetHandles: readonly number[] = [];
-  private onEntityTransformChanged:
-    | ((handles: readonly number[]) => void)
-    | null = null;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -139,9 +136,6 @@ export class Renderer {
       engine,
       (handle) => this.sceneManager.getEntityMesh(handle),
     );
-    this.transformGizmo.setOnTransformCommitted((handles) => {
-      this.onEntityTransformChanged?.(handles);
-    });
 
     // ResizeObserver, not window "resize" — the canvas's own size can
     // change from layout shifts (e.g. side panels appearing/disappearing
@@ -249,14 +243,6 @@ export class Renderer {
    */
   setGizmoTargets(handles: readonly number[]): void {
     this.gizmoTargetHandles = handles;
-  }
-
-  /**
-   * Sets the callback fired when a gizmo drag finishes, with the
-   * entities whose transforms it wrote.
-   */
-  setOnEntityTransformChanged(fn: (handles: readonly number[]) => void): void {
-    this.onEntityTransformChanged = fn;
   }
 
   private onPickMouseDown = (event: MouseEvent): void => {
