@@ -262,12 +262,12 @@ _To be determined_
 | Phase 16 | View-Angle Camera Gizmo — quick-view camera presets (top/bottom/left/right/front/back, perspective/orthographic toggle)                | Phase 14   |
 | Phase 17 | Viewport Click-to-Select — click an entity in the 3D viewport to select it (raycasting against spawned meshes), syncing with the Hierarchy panel's existing selection state | Phase 14   |
 | Phase 18 | Transform Gizmo — translate/rotate gizmo for the whole selection, pivoting at its centre (`W`/`E` switch mode)                         | Phase 17   |
+| Phase 19 | Event Bus — engine-side entity change events (spawn, despawn, reparent, component change) drained once per frame into a typed client dispatcher; replaces the Hierarchy and gizmo polling and the Inspector revision counter. `OnEntitySelected` deferred until a consumer outside React and the renderer needs it (ADR-036)                                                                               | Phase 14   |
 
 **Upcoming**
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 19 | Event Bus — engine-side entity change events (spawn, despawn, reparent, component change) drained once per frame into a typed client dispatcher; replaces the Hierarchy and gizmo polling and the Inspector revision counter. `OnEntitySelected` deferred until a consumer outside React and the renderer needs it (ADR-036)                                                                               | Phase 14   |
 | Phase 20 | GLB model loading at runtime                                                                                                           | Phase 19   |
 | Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20) so the technique is chosen once | Phase 17, Phase 20 |
 | Phase 22 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 26)                                            | Phase 13   |
