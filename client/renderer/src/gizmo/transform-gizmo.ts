@@ -1,9 +1,7 @@
 import * as THREE from "three/webgpu";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Engine, EntityHierarchyNode } from "../engine";
-
-/** How often the entity hierarchy is re-read to find ancestors (ms). */
-const HIERARCHY_REFRESH_MS = 500;
+import { ParentMap } from "./parent-map";
 
 type Vec3Tuple = [number, number, number];
 type QuatTuple = [number, number, number, number];
@@ -46,9 +44,10 @@ export class TransformGizmo {
 
   private attached = false;
   private handles: readonly number[] = [];
-  // handle -> parent handle (null for roots), from the last hierarchy read.
-  private parentOf = new Map<number, number | null>();
-  private lastHierarchyRefreshMs = 0;
+  // Who exists and who is whose parent. Re-read only when the engine's change
+  // events say the hierarchy changed (ADR-036); no polling.
+  private parents: ParentMap;
+  private unsubscribeEvents: () => void;
   private dragStart: DragStart | null = null;
   private onTransformCommitted: ((handles: readonly number[]) => void) | null =
     null;
@@ -64,6 +63,12 @@ export class TransformGizmo {
     this.canvas = canvas;
     this.engine = engine;
     this.getMesh = getMesh;
+    this.parents = new ParentMap(
+      () => JSON.parse(engine.listEntityHierarchy()) as EntityHierarchyNode[],
+    );
+    this.unsubscribeEvents = engine.events.subscribe((batch) =>
+      this.parents.observe(batch),
+    );
 
     // Capture phase, so these run before TransformControls' own
     // pointerdown/pointerup listeners on the same element.
@@ -101,22 +106,14 @@ export class TransformGizmo {
 
   /**
    * Call once per frame, after the scene has been synced from the ECS
-   * and before rendering. `handles` is the selection; pass the same
-   * array instance until the selection changes (a new instance triggers
-   * a hierarchy re-read). An empty list detaches the gizmo.
+   * and before rendering. `handles` is the selection. An empty list
+   * detaches the gizmo.
    */
   update(camera: THREE.Camera, handles: readonly number[]): void {
     this.controls.camera = camera;
     if (this.controls.dragging) return; // never re-target mid-drag
 
-    const now = performance.now();
-    if (
-      handles !== this.handles ||
-      now - this.lastHierarchyRefreshMs > HIERARCHY_REFRESH_MS
-    ) {
-      this.refreshHierarchy();
-      this.lastHierarchyRefreshMs = now;
-    }
+    this.parents.refreshIfDirty();
     this.handles = handles;
 
     const pivot = this.averageWorldPosition(this.resolveTargets());
@@ -153,6 +150,7 @@ export class TransformGizmo {
     this.scene.remove(this.controls.getHelper());
     this.scene.remove(this.proxy);
     this.controls.dispose();
+    this.unsubscribeEvents();
   }
 
   private detach(): void {
@@ -161,30 +159,23 @@ export class TransformGizmo {
     this.attached = false;
   }
 
-  private refreshHierarchy(): void {
-    const nodes = JSON.parse(
-      this.engine.listEntityHierarchy(),
-    ) as EntityHierarchyNode[];
-    this.parentOf = new Map(nodes.map((n) => [n.handle, n.parent_handle]));
-  }
-
   /**
    * The selected entities the gizmo moves: alive, visible, and with no
    * selected (eligible) ancestor.
    */
   private resolveTargets(): number[] {
     const eligible = this.handles.filter(
-      (h) => this.parentOf.has(h) && this.getMesh(h)?.visible === true,
+      (h) => this.parents.has(h) && this.getMesh(h)?.visible === true,
     );
     const eligibleSet = new Set(eligible);
     return eligible.filter((h) => !this.hasAncestorIn(h, eligibleSet));
   }
 
   private hasAncestorIn(handle: number, set: ReadonlySet<number>): boolean {
-    let parent = this.parentOf.get(handle) ?? null;
+    let parent = this.parents.parentOf(handle);
     while (parent !== null) {
       if (set.has(parent)) return true;
-      parent = this.parentOf.get(parent) ?? null;
+      parent = this.parents.parentOf(parent);
     }
     return false;
   }
