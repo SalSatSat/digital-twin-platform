@@ -115,9 +115,7 @@ once per frame, and fan the events out through a typed client dispatcher.
    and then fetches its snapshot, so no event falls in the gap. After
    `EntityDespawned(h)` a consumer must not read state for `h` until an
    `EntitySpawned(h)` arrives. On `Resync` or on engine re-creation it
-   refetches. A consumer marks itself dirty on events and refetches at most
-   once per dispatch batch, so boundary-respawn churn in Runtime costs at
-   most one refetch per frame.
+   refetches. A consumer marks itself dirty on events and refetches at most once per dispatch batch, so a burst of structural events costs at most one refetch per frame.
 
 10. **Selection stays off the bus.** `OnEntitySelected` is deferred. Its three
     consumers (Hierarchy panel, Inspector, gizmo) already receive selection
