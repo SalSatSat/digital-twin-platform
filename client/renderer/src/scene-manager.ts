@@ -5,6 +5,7 @@ import { CameraControls } from "./camera/camera-controls";
 import { CameraTween } from "./camera/camera-tween";
 import { computePresetTransform } from "./gizmo/view-presets";
 import type { ViewPreset } from "./gizmo/view-presets";
+import { respawnInPlace } from "./respawn";
 
 /**
  * The Three.js camera types a spawned camera entity can resolve to,
@@ -59,6 +60,8 @@ interface SpawnedEntity {
   handle: number;
   name: string;
   mesh: THREE.Mesh;
+  /** Spawned with a Velocity. Only these respawn at the boundary. */
+  dynamic: boolean;
 }
 
 /**
@@ -172,7 +175,7 @@ export class SceneManager {
       );
       const mesh = this.createMesh(entityDef.color);
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh });
+      this.spawnedEntities.push({ handle, name, mesh, dynamic: true });
     }
 
     // Spawn static entities
@@ -191,7 +194,7 @@ export class SceneManager {
         entityDef.position.z,
       );
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh });
+      this.spawnedEntities.push({ handle, name, mesh, dynamic: false });
     }
 
     console.log(
@@ -418,11 +421,12 @@ export class SceneManager {
 
   /**
    * Updates all entity mesh positions from the ECS each frame.
-   * Handles boundary despawn and respawn for dynamic entities, but only
-   * while the simulation is running (respawnEnabled). Boundary respawn is
-   * runtime logic — in edit mode it would destroy and recreate an entity
-   * (new handle, velocity reset) just because an Inspector edit moved it
-   * past the boundary.
+   * Handles boundary respawn for dynamic entities, but only while the
+   * simulation is running (respawnEnabled). Boundary respawn is runtime
+   * logic: in edit mode it would teleport an entity back to the spawn line
+   * and reset its velocity just because an Inspector edit moved it past the
+   * boundary. The respawn is done in place (see respawn.ts), so the entity
+   * keeps its handle, its id and its children.
    */
   update(
     deltaTime: number,
@@ -433,37 +437,16 @@ export class SceneManager {
     // Update camera controls
     this.controls?.update(deltaTime);
 
-    const toRespawn: Array<{
-      name: string;
-      color: number;
-      y: number;
-      vx: number;
-      vy: number;
-      vz: number;
-    }> = [];
-
     for (const spawned of this.spawnedEntities) {
       const position = this.engine.getPosition(spawned.handle);
       if (!position) continue;
 
-      if (respawnEnabled && position[0] > boundaryX) {
-        const name = spawned.name;
-        const color = (
-          spawned.mesh.material as THREE.MeshStandardMaterial
-        ).color.getHex();
-        toRespawn.push({
-          name,
-          color,
-          y: spawned.mesh.position.y,
-          vx: 1.0,
-          vy: 0.0,
-          vz: 0.0,
-        });
-        this.engine.despawnEntity(spawned.handle);
-        this.threeScene.remove(spawned.mesh);
-        spawned.mesh.geometry.dispose();
-        if (spawned.mesh.material instanceof THREE.Material) {
-          spawned.mesh.material.dispose();
+      if (respawnEnabled && spawned.dynamic && position[0] > boundaryX) {
+        // In place, not despawn and spawn: that keeps the handle and the
+        // entity's children, which a despawn would destroy. The mesh moves
+        // now so it does not draw one frame at the old spot.
+        if (respawnInPlace(this.engine, spawned.handle, spawnX)) {
+          spawned.mesh.position.set(spawnX, position[1], 0.0);
         }
       } else {
         spawned.mesh.position.set(position[0], position[1], position[2]);
@@ -487,24 +470,6 @@ export class SceneManager {
     this.spawnedEntities = this.spawnedEntities.filter(
       (s) => this.engine.getPosition(s.handle) !== undefined,
     );
-
-    // Respawn entities that crossed the boundary
-    for (const config of toRespawn) {
-      const name = config.name;
-      const handle = this.engine.spawnDynamicObject(
-        name,
-        spawnX,
-        config.y,
-        0.0,
-        config.vx,
-        config.vy,
-        config.vz,
-      );
-      const mesh = this.createMesh(config.color);
-      mesh.position.set(spawnX, config.y, 0.0);
-      this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh });
-    }
 
     // Step any in-progress camera-preset snap (from the view gizmo)
     // and apply it directly, then write it back to the ECS the same
