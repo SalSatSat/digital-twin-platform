@@ -4,8 +4,11 @@ import {
   EVENT_KIND,
   EventDispatcher,
   NONE,
+  affectsEntityListing,
+  affectsHierarchy,
   decodeEvents,
   drainAndDispatch,
+  type ComponentKindName,
   type EngineEvent,
 } from "./events";
 
@@ -280,5 +283,82 @@ describe("drainAndDispatch", () => {
     drainAndDispatch(source, dispatcher);
 
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+const despawned = (handle: number): EngineEvent => ({
+  kind: "entityDespawned",
+  handle,
+});
+const reparented = (handle: number): EngineEvent => ({
+  kind: "entityReparented",
+  handle,
+  oldParent: null,
+  newParent: 0,
+});
+const changed = (component: ComponentKindName): EngineEvent => ({
+  kind: "componentChanged",
+  handle: 1,
+  component,
+});
+const resync: EngineEvent = { kind: "resync" };
+
+describe("affectsHierarchy", () => {
+  it("is false for an empty batch", () => {
+    expect(affectsHierarchy([])).toBe(false);
+  });
+
+  it.each([
+    ["a spawn", spawned(1)],
+    ["a despawn", despawned(1)],
+    ["a reparent", reparented(1)],
+    ["a resync", resync],
+  ])("is true for %s", (_label, event) => {
+    expect(affectsHierarchy([event])).toBe(true);
+  });
+
+  it.each(["LocalTransform", "Camera", "Velocity", "EntityInfo"] as const)(
+    "is false for a %s change, which cannot alter who exists or who is whose parent",
+    (component) => {
+      expect(affectsHierarchy([changed(component)])).toBe(false);
+    },
+  );
+
+  it("is true if any event in a mixed batch qualifies", () => {
+    expect(affectsHierarchy([changed("LocalTransform"), spawned(2)])).toBe(
+      true,
+    );
+  });
+});
+
+describe("affectsEntityListing", () => {
+  it("is false for an empty batch", () => {
+    expect(affectsEntityListing([])).toBe(false);
+  });
+
+  it.each([
+    ["a spawn", spawned(1)],
+    ["a despawn", despawned(1)],
+    ["a reparent", reparented(1)],
+    ["a resync", resync],
+  ])("is true for %s", (_label, event) => {
+    expect(affectsEntityListing([event])).toBe(true);
+  });
+
+  it("is true for an EntityInfo change, which carries the name and contexts", () => {
+    expect(affectsEntityListing([changed("EntityInfo")])).toBe(true);
+  });
+
+  it.each(["LocalTransform", "Camera", "Velocity"] as const)(
+    "is false for a %s change, which the panel does not display",
+    (component) => {
+      expect(affectsEntityListing([changed(component)])).toBe(false);
+    },
+  );
+
+  it("is true if any event in a mixed batch qualifies", () => {
+    expect(
+      affectsEntityListing([changed("LocalTransform"), changed("EntityInfo")]),
+    ).toBe(true);
   });
 });

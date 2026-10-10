@@ -180,3 +180,34 @@ export function drainAndDispatch(
 ): void {
   dispatcher.dispatch(decodeEvents(source.drain_events()));
 }
+
+function isStructural(event: EngineEvent): boolean {
+  return (
+    event.kind === "entitySpawned" ||
+    event.kind === "entityDespawned" ||
+    event.kind === "entityReparented" ||
+    event.kind === "resync"
+  );
+}
+
+/**
+ * True if the batch can change who exists or who is whose parent: a spawn,
+ * a despawn, a reparent, or a resync. This is all the transform gizmo needs
+ * to know to refresh its ancestor map.
+ */
+export function affectsHierarchy(events: readonly EngineEvent[]): boolean {
+  return events.some(isStructural);
+}
+
+/**
+ * True if the batch can change what the Hierarchy panel lists: anything
+ * that affects the hierarchy, or a change to an entity's EntityInfo (its
+ * name and contexts).
+ */
+export function affectsEntityListing(events: readonly EngineEvent[]): boolean {
+  return events.some(
+    (event) =>
+      isStructural(event) ||
+      (event.kind === "componentChanged" && event.component === "EntityInfo"),
+  );
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Engine, EntityHierarchyNode } from "@dt-platform/renderer";
-import { HierarchyError } from "@dt-platform/renderer";
+import { HierarchyError, affectsEntityListing } from "@dt-platform/renderer";
 import type { Selection } from "./selection";
 
 interface EntityHierarchyPanelProps {
@@ -22,11 +22,11 @@ interface EntityHierarchyPanelProps {
  * Inspector's former temporary numeric handle input), and supports
  * drag-and-drop reparenting via setParent/removeParent.
  *
- * Polls listEntityHierarchy() on an interval rather than fetching once,
- * since there's no Event Bus yet to push spawn/despawn/reparent
- * notifications. A successful drag-and-drop drop triggers an immediate extra
- * fetch on top of the interval, so reparenting feels instant rather than
- * waiting up to ~1s for the next poll tick.
+ * Stays in sync through the engine's change events (ADR-036): it subscribes
+ * first, then fetches a snapshot, and refetches whenever a frame's batch
+ * can change what the list shows (a spawn, despawn, reparent, rename or
+ * resync). A drag-and-drop reparent shows up on the next frame through the
+ * same path; there is no polling.
  *
  * Cycle/invalid-target rejection is NOT checked client-side before a
  * drop — World::set_parent's existing cycle detection is the single
@@ -51,9 +51,13 @@ export function EntityHierarchyPanel({
       const json = engine.listEntityHierarchy();
       setNodes(JSON.parse(json) as EntityHierarchyNode[]);
     };
+    // Subscribe before fetching, so no event falls between the snapshot and
+    // the first batch.
+    const unsubscribe = engine.events.subscribe((batch) => {
+      if (affectsEntityListing(batch)) fetchHierarchy();
+    });
     fetchHierarchy();
-    const intervalId = setInterval(fetchHierarchy, 1000);
-    return () => clearInterval(intervalId);
+    return unsubscribe;
   }, [engine]);
 
   if (!engine) {
@@ -93,9 +97,7 @@ export function EntityHierarchyPanel({
       engine.setParent(draggedHandle, targetHandle);
       onReparented?.();
       setDropError(null);
-      setNodes(
-        JSON.parse(engine.listEntityHierarchy()) as EntityHierarchyNode[],
-      );
+      // The list refreshes from the reparent event on the next frame.
     } catch (e) {
       setDropError(e instanceof HierarchyError ? e.message : String(e));
     }
@@ -108,9 +110,6 @@ export function EntityHierarchyPanel({
       engine.removeParent(draggedHandle);
       onReparented?.();
       setDropError(null);
-      setNodes(
-        JSON.parse(engine.listEntityHierarchy()) as EntityHierarchyNode[],
-      );
     } catch (e) {
       setDropError(e instanceof HierarchyError ? e.message : String(e));
     }

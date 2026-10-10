@@ -1,5 +1,6 @@
 export { Engine, HierarchyError, ReflectionError } from "./engine";
 export type { EntityHierarchyNode } from "./engine";
+export { affectsEntityListing } from "./events";
 export type {
   ComponentKindName,
   EngineEvent,
