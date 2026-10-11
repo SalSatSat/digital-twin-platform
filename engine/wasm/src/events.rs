@@ -5,7 +5,7 @@
 //! `Uint32Array` by `EngineWorld::drain_events`. `u32::MAX` means "none".
 //! Events carry ids only; consumers re-read state through the getters.
 //!
-//! The kind constants are mirrored in TypeScript (`engine.ts`), the same way
+//! The kind constants are mirrored in TypeScript (`events.ts`), the same way
 //! the boundary's status codes are.
 
 /// "No value" in the `a` and `b` words of a record.
@@ -14,7 +14,6 @@ pub const NONE: u32 = u32::MAX;
 pub const KIND_ENTITY_SPAWNED: u32 = 0;
 pub const KIND_ENTITY_DESPAWNED: u32 = 1;
 /// a = old parent handle, b = new parent handle (either may be `NONE`).
-#[allow(dead_code)] // Recorded by set_parent/remove_parent in the next step.
 pub const KIND_ENTITY_REPARENTED: u32 = 2;
 /// a = component kind id.
 pub const KIND_COMPONENT_CHANGED: u32 = 3;
