@@ -144,7 +144,7 @@ lint: ## Run all linters and type checks
 
 .PHONY: lint-engine
 lint-engine: ## Lint Rust code with clippy
-	cd $(ENGINE_DIR) && cargo clippy -- -D warnings
+	cd $(ENGINE_DIR) && cargo clippy --all-targets -- -D warnings
 
 .PHONY: lint-client
 lint-client: ## Lint frontend TypeScript code
