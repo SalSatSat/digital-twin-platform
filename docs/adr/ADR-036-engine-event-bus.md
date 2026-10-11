@@ -207,3 +207,10 @@ implementation added or corrected:
   their meshes; that path is reachable only by a despawn it did not
   initiate, which no code does today. Use `EntityDespawned` there when a
   delete-entity UI or Phase 20 unloading needs it.
+
+## Addendum: Component add/remove events (2026-10-11)
+ADR-037 adds `ComponentAdded` and `ComponentRemoved` records (kinds 5 and 6,
+component id in `a`) to the wire format in decision 3. Decision 4 needs no
+change: the queue already stops looking for a duplicate `ComponentChanged` at
+any other record for the same handle, so both kinds act as barriers. The
+consumer contract in decision 9 gains the rule in ADR-037 decision 7.
