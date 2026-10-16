@@ -76,6 +76,8 @@ pub enum ReflectError {
     EntityNotFound,
     /// The entity exists, but does not have this component.
     ComponentNotPresent,
+    /// The entity already has this component. Adds are strict (ADR-037).
+    ComponentAlreadyPresent,
     /// The JSON payload didn't match the expected shape for this component.
     DeserializationFailed(String),
     /// The payload deserialized fine, but failed a semantic check
@@ -97,6 +99,29 @@ pub struct ComponentDescriptor {
     pub has: fn(&World, Entity) -> bool,
     pub to_json: fn(&World, Entity) -> Result<serde_json::Value, ReflectError>,
     pub from_json: fn(&mut World, Entity, serde_json::Value) -> Result<(), ReflectError>,
+    /// `Some` only for components that may be added and removed after
+    /// spawn (ADR-037). `None` marks a mandatory component.
+    pub optional: Option<OptionalOps>,
+}
+
+/// Structural operations of an optional component. Kept in one `Option`
+/// on the descriptor so a mandatory component cannot carry add/remove
+/// functions, and an optional one cannot lack them.
+pub struct OptionalOps {
+    /// Adds the component from its full wire JSON (what `to_json` returns).
+    /// The caller has already checked entity, kind and absence.
+    pub add_from_json: fn(&mut World, Entity, serde_json::Value) -> Result<(), ReflectError>,
+    /// Removes the component. The caller has already checked presence.
+    pub remove: fn(&mut World, Entity) -> Result<(), ReflectError>,
+    /// The default wire JSON the Inspector offers when adding.
+    pub default_json: fn() -> Result<serde_json::Value, ReflectError>,
+}
+
+impl ComponentDescriptor {
+    /// True when the component may be added or removed after spawn.
+    pub fn is_optional(&self) -> bool {
+        self.optional.is_some()
+    }
 }
 
 /// The full set of reflectable components. Add one entry here — and
@@ -110,6 +135,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             has: local_transform_has,
             to_json: local_transform_to_json,
             from_json: local_transform_from_json,
+            optional: None,
         },
         ComponentDescriptor {
             kind: ComponentKind::Velocity,
@@ -117,6 +143,11 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             has: velocity_has,
             to_json: velocity_to_json,
             from_json: velocity_from_json,
+            optional: Some(OptionalOps {
+                add_from_json: velocity_add_from_json,
+                remove: velocity_remove,
+                default_json: velocity_default_json,
+            }),
         },
         ComponentDescriptor {
             kind: ComponentKind::Camera,
@@ -124,6 +155,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             has: camera_has,
             to_json: camera_to_json,
             from_json: camera_from_json,
+            optional: None,
         },
         ComponentDescriptor {
             kind: ComponentKind::EntityInfo,
@@ -131,6 +163,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             has: entity_info_has,
             to_json: entity_info_to_json,
             from_json: entity_info_from_json,
+            optional: None,
         },
     ]
 }
@@ -144,6 +177,8 @@ pub fn registry() -> &'static [ComponentDescriptor] {
 pub struct ComponentKindInfo {
     pub kind: &'static str,
     pub display_name: &'static str,
+    /// True when the Inspector may offer to add or remove this kind.
+    pub optional: bool,
 }
 
 /// The full registry's kind/display-name pairs, JSON-serializable.
@@ -157,6 +192,7 @@ pub fn component_kind_infos() -> Vec<ComponentKindInfo> {
         .map(|d| ComponentKindInfo {
             kind: d.kind.as_str(),
             display_name: d.display_name,
+            optional: d.is_optional(),
         })
         .collect()
 }
@@ -178,6 +214,73 @@ pub fn list_components(world: &World, entity: Entity) -> Vec<ComponentKind> {
 /// in exactly one place, rather than each caller re-searching registry().
 pub fn find_descriptor(kind: ComponentKind) -> Option<&'static ComponentDescriptor> {
     registry().iter().find(|d| d.kind == kind)
+}
+
+/// Adds an optional component from its full wire JSON (ADR-037).
+///
+/// Strict, and the checks live here once so no component re-implements
+/// them. In order: the entity exists, the kind is optional, the entity does
+/// not already have it, then the component converts the JSON. Nothing is
+/// mutated unless every check passes.
+// TODO(3d): remove this allow once EngineWorld::add_component_json calls it.
+#[allow(dead_code)]
+pub fn add_component(
+    world: &mut World,
+    entity: Entity,
+    kind: ComponentKind,
+    json: serde_json::Value,
+) -> Result<(), ReflectError> {
+    if !world.contains(entity) {
+        return Err(ReflectError::EntityNotFound);
+    }
+    let descriptor = find_descriptor(kind)
+        .ok_or_else(|| ReflectError::ValidationFailed("unknown component kind".to_string()))?;
+    let Some(ops) = descriptor.optional.as_ref() else {
+        return Err(ReflectError::ValidationFailed(format!(
+            "{} cannot be added",
+            kind.as_str()
+        )));
+    };
+    if (descriptor.has)(world, entity) {
+        return Err(ReflectError::ComponentAlreadyPresent);
+    }
+    (ops.add_from_json)(world, entity, json)
+}
+
+/// Removes an optional component (ADR-037). Strict: fails if the entity
+/// lacks it. Same check order as `add_component`.
+// TODO(3d): remove this allow once EngineWorld::remove_component calls it.
+#[allow(dead_code)]
+pub fn remove_component(
+    world: &mut World,
+    entity: Entity,
+    kind: ComponentKind,
+) -> Result<(), ReflectError> {
+    if !world.contains(entity) {
+        return Err(ReflectError::EntityNotFound);
+    }
+    let descriptor = find_descriptor(kind)
+        .ok_or_else(|| ReflectError::ValidationFailed("unknown component kind".to_string()))?;
+    let Some(ops) = descriptor.optional.as_ref() else {
+        return Err(ReflectError::ValidationFailed(format!(
+            "{} cannot be removed",
+            kind.as_str()
+        )));
+    };
+    if !(descriptor.has)(world, entity) {
+        return Err(ReflectError::ComponentNotPresent);
+    }
+    (ops.remove)(world, entity)
+}
+
+/// The default wire JSON for an optional kind; `None` for a mandatory kind.
+/// A default that failed to serialize also reads as `None`, which the
+/// Inspector shows as "cannot add"; the guard test below catches it.
+// TODO(3d): remove this allow once EngineWorld::default_component_json calls it.
+#[allow(dead_code)]
+pub fn default_component_json(kind: ComponentKind) -> Option<serde_json::Value> {
+    let ops = find_descriptor(kind)?.optional.as_ref()?;
+    (ops.default_json)().ok()
 }
 
 // ─── Velocity ───────────────────────────────────────────────────────────
@@ -210,6 +313,37 @@ fn velocity_from_json(
         .map_err(|_| ReflectError::ComponentNotPresent)?;
     *velocity = new_velocity;
     Ok(())
+}
+
+/// Adds Velocity from its full wire JSON. Entity, kind and absence were
+/// already checked by `add_component`; this only converts.
+fn velocity_add_from_json(
+    world: &mut World,
+    entity: Entity,
+    json: serde_json::Value,
+) -> Result<(), ReflectError> {
+    let velocity: Velocity = serde_json::from_value(json)
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    world
+        .add_component(entity, velocity)
+        .map_err(|_| ReflectError::EntityNotFound)
+}
+
+fn velocity_remove(world: &mut World, entity: Entity) -> Result<(), ReflectError> {
+    world
+        .remove_component::<Velocity>(entity)
+        .map(|_velocity| ())
+        .map_err(|e| match e {
+            hecs::ComponentError::NoSuchEntity => ReflectError::EntityNotFound,
+            hecs::ComponentError::MissingComponent(_) => ReflectError::ComponentNotPresent,
+        })
+}
+
+/// A zero Velocity, serialized by the same path as `velocity_to_json`, so
+/// the default can never drift from the wire shape.
+fn velocity_default_json() -> Result<serde_json::Value, ReflectError> {
+    serde_json::to_value(Velocity::default())
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
 }
 
 // ─── LocalTransform ─────────────────────────────────────────────────────
@@ -561,6 +695,227 @@ mod tests {
         let kinds = list_components(&world, entity);
         assert!(kinds.contains(&ComponentKind::LocalTransform));
         assert!(!kinds.contains(&ComponentKind::Velocity));
+    }
+
+    // ── Optional components: add / remove (ADR-037) ───────────────────
+
+    fn velocity_json(x: f32, y: f32, z: f32) -> serde_json::Value {
+        serde_json::json!({ "value": [x, y, z] })
+    }
+
+    /// An entity carrying all three mandatory kinds and no Velocity.
+    fn entity_with_mandatory_components(world: &mut World) -> Entity {
+        let entity = world.spawn();
+        world
+            .add_component(entity, LocalTransform::new(Vec3::ZERO))
+            .unwrap();
+        world
+            .add_component(entity, CameraComponent::perspective())
+            .unwrap();
+        world
+            .add_component(entity, EntityInfo::new("Probe"))
+            .unwrap();
+        entity
+    }
+
+    const MANDATORY_KINDS: [ComponentKind; 3] = [
+        ComponentKind::LocalTransform,
+        ComponentKind::Camera,
+        ComponentKind::EntityInfo,
+    ];
+
+    #[test]
+    fn velocity_is_the_only_optional_component() {
+        for descriptor in registry() {
+            assert_eq!(
+                descriptor.is_optional(),
+                descriptor.kind == ComponentKind::Velocity,
+                "{:?}",
+                descriptor.kind
+            );
+        }
+    }
+
+    #[test]
+    fn component_kind_infos_report_which_kinds_are_optional() {
+        let infos = serde_json::to_value(component_kind_infos()).unwrap();
+        for info in infos.as_array().unwrap() {
+            let expected = info["kind"] == "Velocity";
+            assert_eq!(info["optional"], expected, "{}", info["kind"]);
+        }
+    }
+
+    #[test]
+    fn add_component_adds_velocity_from_its_wire_json() {
+        let mut world = World::new();
+        let entity = world.spawn();
+
+        add_component(
+            &mut world,
+            entity,
+            ComponentKind::Velocity,
+            velocity_json(1.0, 2.0, 3.0),
+        )
+        .unwrap();
+
+        let velocity = world.get_component::<Velocity>(entity).unwrap();
+        assert_eq!(velocity.value, Vec3::new(1.0, 2.0, 3.0));
+    }
+
+    #[test]
+    fn add_component_rejects_a_component_the_entity_already_has() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.add_component(entity, Velocity::new(Vec3::X)).unwrap();
+
+        let result = add_component(
+            &mut world,
+            entity,
+            ComponentKind::Velocity,
+            velocity_json(9.0, 9.0, 9.0),
+        );
+
+        assert!(matches!(result, Err(ReflectError::ComponentAlreadyPresent)));
+        let velocity = world.get_component::<Velocity>(entity).unwrap();
+        assert_eq!(velocity.value, Vec3::X);
+    }
+
+    #[test]
+    fn add_component_rejects_mandatory_kinds_even_when_present() {
+        let mut world = World::new();
+        let entity = entity_with_mandatory_components(&mut world);
+
+        for kind in MANDATORY_KINDS {
+            match add_component(&mut world, entity, kind, serde_json::json!({})) {
+                Err(ReflectError::ValidationFailed(message)) => {
+                    assert!(message.contains("cannot be added"), "{kind:?}: {message}");
+                }
+                other => panic!("{kind:?}: expected ValidationFailed, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn add_component_rejects_invalid_json_and_leaves_the_entity_unchanged() {
+        let mut world = World::new();
+        let entity = world.spawn();
+
+        let result = add_component(
+            &mut world,
+            entity,
+            ComponentKind::Velocity,
+            serde_json::json!({ "value": "fast" }),
+        );
+
+        assert!(matches!(
+            result,
+            Err(ReflectError::DeserializationFailed(_))
+        ));
+        assert!(!velocity_has(&world, entity));
+    }
+
+    #[test]
+    fn add_component_rejects_a_missing_entity() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.despawn(entity);
+
+        let result = add_component(
+            &mut world,
+            entity,
+            ComponentKind::Velocity,
+            velocity_json(0.0, 0.0, 0.0),
+        );
+
+        assert!(matches!(result, Err(ReflectError::EntityNotFound)));
+    }
+
+    #[test]
+    fn remove_component_removes_velocity() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.add_component(entity, Velocity::new(Vec3::X)).unwrap();
+
+        remove_component(&mut world, entity, ComponentKind::Velocity).unwrap();
+
+        assert!(!velocity_has(&world, entity));
+    }
+
+    #[test]
+    fn remove_component_rejects_a_component_the_entity_lacks() {
+        let mut world = World::new();
+        let entity = world.spawn();
+
+        let result = remove_component(&mut world, entity, ComponentKind::Velocity);
+
+        assert!(matches!(result, Err(ReflectError::ComponentNotPresent)));
+    }
+
+    #[test]
+    fn remove_component_rejects_mandatory_kinds() {
+        let mut world = World::new();
+        let entity = entity_with_mandatory_components(&mut world);
+
+        for kind in MANDATORY_KINDS {
+            match remove_component(&mut world, entity, kind) {
+                Err(ReflectError::ValidationFailed(message)) => {
+                    assert!(message.contains("cannot be removed"), "{kind:?}: {message}");
+                }
+                other => panic!("{kind:?}: expected ValidationFailed, got {other:?}"),
+            }
+        }
+
+        let kinds = list_components(&world, entity);
+        for kind in MANDATORY_KINDS {
+            assert!(kinds.contains(&kind), "{kind:?} was removed");
+        }
+    }
+
+    #[test]
+    fn remove_component_rejects_a_missing_entity() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.despawn(entity);
+
+        let result = remove_component(&mut world, entity, ComponentKind::Velocity);
+
+        assert!(matches!(result, Err(ReflectError::EntityNotFound)));
+    }
+
+    #[test]
+    fn default_component_json_for_velocity_adds_a_default_velocity() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        let json = default_component_json(ComponentKind::Velocity).expect("Velocity has a default");
+
+        add_component(&mut world, entity, ComponentKind::Velocity, json).unwrap();
+
+        let velocity = world.get_component::<Velocity>(entity).unwrap();
+        assert_eq!(*velocity, Velocity::default());
+    }
+
+    #[test]
+    fn default_component_json_is_none_for_mandatory_kinds() {
+        for kind in MANDATORY_KINDS {
+            assert!(default_component_json(kind).is_none(), "{kind:?}");
+        }
+    }
+
+    // Guard for Phase 20b: a new optional kind (Mesh, Material) must ship a
+    // default that its own add path accepts (ADR-037, Consequences).
+    #[test]
+    fn every_optional_kind_has_a_default_that_add_accepts() {
+        for descriptor in registry().iter().filter(|d| d.is_optional()) {
+            let mut world = World::new();
+            let entity = world.spawn();
+            let json = default_component_json(descriptor.kind)
+                .unwrap_or_else(|| panic!("{:?} has no default", descriptor.kind));
+
+            add_component(&mut world, entity, descriptor.kind, json)
+                .unwrap_or_else(|e| panic!("{:?}: {e:?}", descriptor.kind));
+
+            assert!((descriptor.has)(&world, entity), "{:?}", descriptor.kind);
+        }
     }
 
     #[test]

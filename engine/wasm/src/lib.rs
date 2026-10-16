@@ -42,6 +42,7 @@ fn reflect_error_to_message(err: reflection::ReflectError) -> String {
     match err {
         EntityNotFound => "entity not found".to_string(),
         ComponentNotPresent => "component not present on entity".to_string(),
+        ComponentAlreadyPresent => "component already present on entity".to_string(),
         DeserializationFailed(msg) => format!("invalid value: {msg}"),
         ValidationFailed(msg) => msg,
     }
@@ -950,6 +951,14 @@ mod tests {
         assert_eq!(ComponentKind::Camera.id(), 1);
         assert_eq!(ComponentKind::Velocity.id(), 2);
         assert_eq!(ComponentKind::EntityInfo.id(), 3);
+    }
+
+    #[test]
+    fn already_present_reflect_error_has_a_stable_message() {
+        assert_eq!(
+            reflect_error_to_message(reflection::ReflectError::ComponentAlreadyPresent),
+            "component already present on entity"
+        );
     }
 
     #[test]
