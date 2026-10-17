@@ -26,6 +26,8 @@ export const EVENT_KIND = {
   EntityReparented: 2,
   ComponentChanged: 3,
   Resync: 4,
+  ComponentAdded: 5,
+  ComponentRemoved: 6,
 } as const;
 
 /** Component ids. Mirror `ComponentKind::id` in engine/wasm/src/reflection.rs. */
@@ -48,6 +50,9 @@ export type EngineEvent =
       newParent: number | null;
     }
   | { kind: "componentChanged"; handle: number; component: ComponentKindName }
+  /** The entity gained or lost an optional component (ADR-037). */
+  | { kind: "componentAdded"; handle: number; component: ComponentKindName }
+  | { kind: "componentRemoved"; handle: number; component: ComponentKindName }
   /** Consumers must discard cached state and refetch snapshots. */
   | { kind: "resync" };
 
@@ -64,6 +69,21 @@ const COMPONENT_NAME_BY_ID: ReadonlyMap<number, ComponentKindName> = new Map(
 
 function parentOrNull(word: number): number | null {
   return word === NONE ? null : word;
+}
+
+/**
+ * Decodes the three record kinds that carry a component id in `a`. An id
+ * this client does not know becomes a `resync`, like an unknown record kind.
+ */
+function componentEvent(
+  kind: "componentChanged" | "componentAdded" | "componentRemoved",
+  handle: number,
+  componentId: number,
+): EngineEvent {
+  const component = COMPONENT_NAME_BY_ID.get(componentId);
+  return component === undefined
+    ? { kind: "resync" }
+    : { kind, handle, component };
 }
 
 /**
@@ -99,15 +119,15 @@ export function decodeEvents(words: Uint32Array): EngineEvent[] {
           newParent: parentOrNull(b),
         });
         break;
-      case EVENT_KIND.ComponentChanged: {
-        const component = COMPONENT_NAME_BY_ID.get(a);
-        events.push(
-          component === undefined
-            ? { kind: "resync" }
-            : { kind: "componentChanged", handle, component },
-        );
+      case EVENT_KIND.ComponentChanged:
+        events.push(componentEvent("componentChanged", handle, a));
         break;
-      }
+      case EVENT_KIND.ComponentAdded:
+        events.push(componentEvent("componentAdded", handle, a));
+        break;
+      case EVENT_KIND.ComponentRemoved:
+        events.push(componentEvent("componentRemoved", handle, a));
+        break;
       default:
         // EVENT_KIND.Resync, or a kind this client does not know: either
         // way cached state cannot be trusted.
@@ -213,12 +233,11 @@ export function affectsEntityListing(events: readonly EngineEvent[]): boolean {
 }
 
 /**
- * True if the batch can change which components the entity behind `handle`
- * has, or what any of them holds: a resync, or a spawn or despawn of that
- * handle (slots are reused, so a despawn and a spawn of the same handle can
- * arrive in one batch).
+ * True if everything cached for the entity behind `handle` is stale: a
+ * resync, or a spawn or despawn of that handle (slots are reused, so a
+ * despawn and a spawn of the same handle can arrive in one batch).
  */
-export function affectsEntity(
+function replacesEntity(
   events: readonly EngineEvent[],
   handle: number,
 ): boolean {
@@ -231,10 +250,34 @@ export function affectsEntity(
 }
 
 /**
- * True if the batch can change the value of one component on one entity:
- * anything that affects the entity, or a `componentChanged` for exactly that
- * handle and component. A reparent alone does not count; the `LocalTransform`
- * change that accompanies a world-preserving reparent does.
+ * True if the batch can change which components the entity behind `handle`
+ * has, or what any of them holds: anything that replaces the entity, or a
+ * component added to or removed from that handle (ADR-037).
+ */
+export function affectsEntity(
+  events: readonly EngineEvent[],
+  handle: number,
+): boolean {
+  return (
+    replacesEntity(events, handle) ||
+    events.some(
+      (event) =>
+        (event.kind === "componentAdded" ||
+          event.kind === "componentRemoved") &&
+        event.handle === handle,
+    )
+  );
+}
+
+/**
+ * True if the batch can change the value of one component on one entity, or
+ * whether the entity has it: anything that replaces the entity, or a
+ * `componentChanged`, `componentAdded` or `componentRemoved` for exactly that
+ * handle and component. An add or remove of a different component does not
+ * count (`affectsEntity` covers the set of components), and neither does a
+ * reparent alone; the `LocalTransform` change that accompanies a
+ * world-preserving reparent does. After a `componentRemoved`, do not read the
+ * component until a `componentAdded` arrives (ADR-037 decision 7).
  */
 export function affectsComponent(
   events: readonly EngineEvent[],
@@ -242,10 +285,12 @@ export function affectsComponent(
   component: ComponentKindName,
 ): boolean {
   return (
-    affectsEntity(events, handle) ||
+    replacesEntity(events, handle) ||
     events.some(
       (event) =>
-        event.kind === "componentChanged" &&
+        (event.kind === "componentChanged" ||
+          event.kind === "componentAdded" ||
+          event.kind === "componentRemoved") &&
         event.handle === handle &&
         event.component === component,
     )

@@ -427,6 +427,48 @@ export class Engine {
   }
 
   /**
+   * Adds an optional component to an entity from its full wire JSON, the
+   * same shape `getComponentJson` returns (ADR-037). To add a default
+   * component, pass `defaultComponentJson(kind)`.
+   *
+   * Throws ReflectionError if the handle or kind is invalid, the JSON is
+   * malformed, the kind is mandatory, or the entity already has the
+   * component. The error message is meant to be shown directly to the user.
+   */
+  addComponentJson(handle: number, kind: string, json: string): void {
+    this.assertInitialized();
+    const rejection = this.engineWorld!.add_component_json(handle, kind, json);
+    if (rejection !== undefined) {
+      throw new ReflectionError(rejection);
+    }
+  }
+
+  /**
+   * Removes an optional component from an entity (ADR-037).
+   *
+   * Throws ReflectionError if the handle or kind is invalid, the kind is
+   * mandatory, or the entity does not have the component. The error
+   * message is meant to be shown directly to the user.
+   */
+  removeComponent(handle: number, kind: string): void {
+    this.assertInitialized();
+    const rejection = this.engineWorld!.remove_component(handle, kind);
+    if (rejection !== undefined) {
+      throw new ReflectionError(rejection);
+    }
+  }
+
+  /**
+   * Returns the default wire JSON for an optional component kind, ready to
+   * pass to `addComponentJson`, or undefined for a mandatory or unknown
+   * kind. The defaults live in the engine, so callers keep no copy of them.
+   */
+  defaultComponentJson(kind: string): string | undefined {
+    this.assertInitialized();
+    return EngineWorld.default_component_json(kind) ?? undefined;
+  }
+
+  /**
    * Returns all registered entity categories as JSON, for populating
    * the Inspector's category dropdown. Includes built-ins and any
    * custom categories added at runtime.
@@ -452,8 +494,9 @@ export class Engine {
    * Returns every reflectable component kind's display name as JSON —
    * the static registry, independent of any entity. Callers should
    * JSON.parse() the result as Array<{ kind: string; display_name:
-   * string }> — kept as a string here to mirror listCategories/
-   * listContexts's convention.
+   * string; optional: boolean }>, where `optional` marks the kinds that
+   * can be added and removed after spawn (ADR-037). Kept as a string here
+   * to mirror listCategories/listContexts's convention.
    */
   listComponentKinds(): string {
     this.assertInitialized();

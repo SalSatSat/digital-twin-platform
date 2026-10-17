@@ -34,6 +34,8 @@ describe("wire constants", () => {
       EntityReparented: 2,
       ComponentChanged: 3,
       Resync: 4,
+      ComponentAdded: 5,
+      ComponentRemoved: 6,
     });
     expect(COMPONENT_KIND_ID).toEqual({
       LocalTransform: 0,
@@ -83,6 +85,56 @@ describe("decodeEvents", () => {
     expect(
       decodeEvents(words([EVENT_KIND.ComponentChanged, 7, id, NONE])),
     ).toEqual([{ kind: "componentChanged", handle: 7, component: name }]);
+  });
+
+  it.each([
+    [0, "LocalTransform"],
+    [1, "Camera"],
+    [2, "Velocity"],
+    [3, "EntityInfo"],
+  ])("decodes ComponentAdded with component id %i as %s", (id, name) => {
+    expect(
+      decodeEvents(words([EVENT_KIND.ComponentAdded, 7, id, NONE])),
+    ).toEqual([{ kind: "componentAdded", handle: 7, component: name }]);
+  });
+
+  it.each([
+    [0, "LocalTransform"],
+    [1, "Camera"],
+    [2, "Velocity"],
+    [3, "EntityInfo"],
+  ])("decodes ComponentRemoved with component id %i as %s", (id, name) => {
+    expect(
+      decodeEvents(words([EVENT_KIND.ComponentRemoved, 7, id, NONE])),
+    ).toEqual([{ kind: "componentRemoved", handle: 7, component: name }]);
+  });
+
+  it.each([
+    ["ComponentAdded", EVENT_KIND.ComponentAdded],
+    ["ComponentRemoved", EVENT_KIND.ComponentRemoved],
+  ])("treats an unknown component id in %s as a resync", (_label, kind) => {
+    expect(decodeEvents(words([kind, 1, 99, NONE]))).toEqual([
+      { kind: "resync" },
+    ]);
+  });
+
+  it("keeps a component add and remove in order with the changes around them", () => {
+    const velocity = COMPONENT_KIND_ID.Velocity;
+    expect(
+      decodeEvents(
+        words(
+          [EVENT_KIND.ComponentChanged, 1, velocity, NONE],
+          [EVENT_KIND.ComponentRemoved, 1, velocity, NONE],
+          [EVENT_KIND.ComponentAdded, 1, velocity, NONE],
+          [EVENT_KIND.ComponentChanged, 1, velocity, NONE],
+        ),
+      ),
+    ).toEqual([
+      { kind: "componentChanged", handle: 1, component: "Velocity" },
+      { kind: "componentRemoved", handle: 1, component: "Velocity" },
+      { kind: "componentAdded", handle: 1, component: "Velocity" },
+      { kind: "componentChanged", handle: 1, component: "Velocity" },
+    ]);
   });
 
   it("decodes Resync", () => {
@@ -304,6 +356,14 @@ const changed = (component: ComponentKindName): EngineEvent => ({
   component,
 });
 const resync: EngineEvent = { kind: "resync" };
+const componentAdded = (
+  handle: number,
+  component: ComponentKindName,
+): EngineEvent => ({ kind: "componentAdded", handle, component });
+const componentRemoved = (
+  handle: number,
+  component: ComponentKindName,
+): EngineEvent => ({ kind: "componentRemoved", handle, component });
 
 describe("affectsHierarchy", () => {
   it("is false for an empty batch", () => {
@@ -331,6 +391,16 @@ describe("affectsHierarchy", () => {
       true,
     );
   });
+
+  it.each([
+    ["added", componentAdded(1, "Velocity")],
+    ["removed", componentRemoved(1, "Velocity")],
+  ])(
+    "is false for a component %s, which cannot alter who exists or who is whose parent",
+    (_label, event) => {
+      expect(affectsHierarchy([event])).toBe(false);
+    },
+  );
 });
 
 describe("affectsEntityListing", () => {
@@ -363,6 +433,16 @@ describe("affectsEntityListing", () => {
       affectsEntityListing([changed("LocalTransform"), changed("EntityInfo")]),
     ).toBe(true);
   });
+
+  it.each([
+    ["added", componentAdded(1, "Velocity")],
+    ["removed", componentRemoved(1, "Velocity")],
+  ])(
+    "is false for a component %s, which the panel does not display",
+    (_label, event) => {
+      expect(affectsEntityListing([event])).toBe(false);
+    },
+  );
 });
 
 const changedOn = (
@@ -405,6 +485,23 @@ describe("affectsEntity", () => {
 
   it("is true if any event in a mixed batch qualifies", () => {
     expect(affectsEntity([changedOn(6, "Camera"), despawned(5)], 5)).toBe(true);
+  });
+
+  it.each([
+    ["a component add", componentAdded(5, "Velocity")],
+    ["a component remove", componentRemoved(5, "Velocity")],
+  ])(
+    "is true for %s on that handle, since the entity's component set changed",
+    (_label, event) => {
+      expect(affectsEntity([event], 5)).toBe(true);
+    },
+  );
+
+  it.each([
+    ["a component add", componentAdded(6, "Velocity")],
+    ["a component remove", componentRemoved(6, "Velocity")],
+  ])("is false for %s on a different handle", (_label, event) => {
+    expect(affectsEntity([event], 5)).toBe(false);
   });
 });
 
@@ -458,5 +555,32 @@ describe("affectsComponent", () => {
         "LocalTransform",
       ),
     ).toBe(true);
+  });
+
+  it.each([
+    ["a component add", componentAdded(5, "Velocity")],
+    ["a component remove", componentRemoved(5, "Velocity")],
+  ])(
+    "is true for %s of exactly that component on that handle",
+    (_label, event) => {
+      expect(affectsComponent([event], 5, "Velocity")).toBe(true);
+    },
+  );
+
+  it.each([
+    ["a component add", componentAdded(5, "Camera")],
+    ["a component remove", componentRemoved(5, "Camera")],
+  ])(
+    "is false for %s of a different component on the same handle",
+    (_label, event) => {
+      expect(affectsComponent([event], 5, "Velocity")).toBe(false);
+    },
+  );
+
+  it.each([
+    ["a component add", componentAdded(6, "Velocity")],
+    ["a component remove", componentRemoved(6, "Velocity")],
+  ])("is false for %s on a different handle", (_label, event) => {
+    expect(affectsComponent([event], 5, "Velocity")).toBe(false);
   });
 });
