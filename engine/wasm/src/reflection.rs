@@ -222,8 +222,6 @@ pub fn find_descriptor(kind: ComponentKind) -> Option<&'static ComponentDescript
 /// them. In order: the entity exists, the kind is optional, the entity does
 /// not already have it, then the component converts the JSON. Nothing is
 /// mutated unless every check passes.
-// TODO(3d): remove this allow once EngineWorld::add_component_json calls it.
-#[allow(dead_code)]
 pub fn add_component(
     world: &mut World,
     entity: Entity,
@@ -249,8 +247,6 @@ pub fn add_component(
 
 /// Removes an optional component (ADR-037). Strict: fails if the entity
 /// lacks it. Same check order as `add_component`.
-// TODO(3d): remove this allow once EngineWorld::remove_component calls it.
-#[allow(dead_code)]
 pub fn remove_component(
     world: &mut World,
     entity: Entity,
@@ -276,8 +272,6 @@ pub fn remove_component(
 /// The default wire JSON for an optional kind; `None` for a mandatory kind.
 /// A default that failed to serialize also reads as `None`, which the
 /// Inspector shows as "cannot add"; the guard test below catches it.
-// TODO(3d): remove this allow once EngineWorld::default_component_json calls it.
-#[allow(dead_code)]
 pub fn default_component_json(kind: ComponentKind) -> Option<serde_json::Value> {
     let ops = find_descriptor(kind)?.optional.as_ref()?;
     (ops.default_json)().ok()

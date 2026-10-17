@@ -19,6 +19,10 @@ pub const KIND_ENTITY_REPARENTED: u32 = 2;
 pub const KIND_COMPONENT_CHANGED: u32 = 3;
 /// The queue overflowed and its contents were discarded: refetch snapshots.
 pub const KIND_RESYNC: u32 = 4;
+/// A component was added to the entity (ADR-037). a = component kind id.
+pub const KIND_COMPONENT_ADDED: u32 = 5;
+/// A component was removed from the entity (ADR-037). a = component kind id.
+pub const KIND_COMPONENT_REMOVED: u32 = 6;
 
 /// Words per record: `[kind, handle, a, b]`.
 pub const RECORD_WORDS: usize = 4;
@@ -124,6 +128,24 @@ mod tests {
         assert_eq!(KIND_ENTITY_REPARENTED, 2);
         assert_eq!(KIND_COMPONENT_CHANGED, 3);
         assert_eq!(KIND_RESYNC, 4);
+        assert_eq!(KIND_COMPONENT_ADDED, 5);
+        assert_eq!(KIND_COMPONENT_REMOVED, 6);
+    }
+
+    #[test]
+    fn event_kinds_are_distinct() {
+        let kinds = [
+            KIND_ENTITY_SPAWNED,
+            KIND_ENTITY_DESPAWNED,
+            KIND_ENTITY_REPARENTED,
+            KIND_COMPONENT_CHANGED,
+            KIND_RESYNC,
+            KIND_COMPONENT_ADDED,
+            KIND_COMPONENT_REMOVED,
+        ];
+        let unique: std::collections::HashSet<u32> = kinds.into_iter().collect();
+
+        assert_eq!(unique.len(), kinds.len());
     }
 
     #[test]
@@ -243,6 +265,44 @@ mod tests {
         assert_eq!(
             records(&queue.drain()),
             vec![[KIND_ENTITY_SPAWNED, 3, NONE, NONE]]
+        );
+    }
+
+    #[test]
+    fn component_added_and_removed_records_are_never_coalesced() {
+        let mut queue = EventQueue::new();
+        queue.push(KIND_COMPONENT_ADDED, 1, 2, NONE);
+        queue.push(KIND_COMPONENT_ADDED, 1, 2, NONE);
+        queue.push(KIND_COMPONENT_REMOVED, 1, 2, NONE);
+        queue.push(KIND_COMPONENT_REMOVED, 1, 2, NONE);
+
+        assert_eq!(records(&queue.drain()).len(), 4);
+    }
+
+    #[test]
+    fn component_change_is_not_collapsed_across_a_component_add_or_remove_for_the_same_handle() {
+        let mut queue = EventQueue::new();
+        queue.push(KIND_COMPONENT_CHANGED, 1, 7, NONE);
+        queue.push(KIND_COMPONENT_REMOVED, 1, 7, NONE);
+        queue.push(KIND_COMPONENT_ADDED, 1, 7, NONE);
+        queue.push(KIND_COMPONENT_CHANGED, 1, 7, NONE);
+
+        assert_eq!(records(&queue.drain()).len(), 4);
+    }
+
+    #[test]
+    fn component_change_collapses_past_a_component_add_for_another_handle() {
+        let mut queue = EventQueue::new();
+        queue.push(KIND_COMPONENT_CHANGED, 1, 7, NONE);
+        queue.push(KIND_COMPONENT_ADDED, 2, 7, NONE);
+        queue.push(KIND_COMPONENT_CHANGED, 1, 7, NONE);
+
+        assert_eq!(
+            records(&queue.drain()),
+            vec![
+                [KIND_COMPONENT_CHANGED, 1, 7, NONE],
+                [KIND_COMPONENT_ADDED, 2, 7, NONE],
+            ]
         );
     }
 }

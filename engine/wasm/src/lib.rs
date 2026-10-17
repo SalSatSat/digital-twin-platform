@@ -534,11 +534,9 @@ impl EngineWorld {
     /// without needing try/catch. See reflect_error_to_message's doc
     /// comment for the same reasoning applied to set_parent/remove_parent.
     pub fn set_component_json(&mut self, handle: u32, kind: &str, json: &str) -> Option<String> {
-        let Some(entity) = self.resolve_handle(handle) else {
-            return Some("entity not found".to_string());
-        };
-        let Some(kind) = ComponentKind::from_str(kind) else {
-            return Some("unknown component kind".to_string());
+        let (entity, kind) = match self.resolve_component_target(handle, kind) {
+            Ok(target) => target,
+            Err(message) => return Some(message),
         };
         let Some(descriptor) = reflection::find_descriptor(kind) else {
             return Some("unknown component kind".to_string());
@@ -569,8 +567,63 @@ impl EngineWorld {
         serde_json::to_string(self.world.registry.contexts()).unwrap_or_else(|_| "[]".to_string())
     }
 
+    /// Adds an optional component from its full wire JSON, the same shape
+    /// `get_component_json` returns (ADR-037).
+    ///
+    /// Returns None on success, or Some(message) on rejection, the same
+    /// convention and the same messages as `set_component_json`, plus
+    /// "component already present on entity" and "<Kind> cannot be added"
+    /// for a mandatory kind. A rejected call records no event; a successful
+    /// one records `ComponentAdded` and no `ComponentChanged` for the
+    /// initial value.
+    pub fn add_component_json(&mut self, handle: u32, kind: &str, json: &str) -> Option<String> {
+        let (entity, kind) = match self.resolve_component_target(handle, kind) {
+            Ok(target) => target,
+            Err(message) => return Some(message),
+        };
+        let value: serde_json::Value = match serde_json::from_str(json) {
+            Ok(v) => v,
+            Err(e) => return Some(format!("invalid JSON: {e}")),
+        };
+        match reflection::add_component(&mut self.world, entity, kind, value) {
+            Ok(()) => {
+                self.record_component_added(handle, kind);
+                None
+            }
+            Err(e) => Some(reflect_error_to_message(e)),
+        }
+    }
+
+    /// Removes an optional component (ADR-037). Returns None on success,
+    /// or Some(message) on rejection: "component not present on entity",
+    /// "<Kind> cannot be removed" for a mandatory kind, or the shared
+    /// handle and kind messages. A rejected call records no event; a
+    /// successful one records `ComponentRemoved`.
+    pub fn remove_component(&mut self, handle: u32, kind: &str) -> Option<String> {
+        let (entity, kind) = match self.resolve_component_target(handle, kind) {
+            Ok(target) => target,
+            Err(message) => return Some(message),
+        };
+        match reflection::remove_component(&mut self.world, entity, kind) {
+            Ok(()) => {
+                self.record_component_removed(handle, kind);
+                None
+            }
+            Err(e) => Some(reflect_error_to_message(e)),
+        }
+    }
+
+    /// The default wire JSON for an optional component kind, ready to pass
+    /// to `add_component_json`. None for a mandatory or unknown kind. Static:
+    /// the defaults belong to the engine, not to any entity, so the
+    /// Inspector keeps no client-side copy (ADR-037 decision 3).
+    pub fn default_component_json(kind: &str) -> Option<String> {
+        let kind = ComponentKind::from_str(kind)?;
+        reflection::default_component_json(kind).map(|value| value.to_string())
+    }
+
     /// Returns every reflectable component kind's display name as a
-    /// JSON array of {kind, display_name} objects — the static
+    /// JSON array of {kind, display_name, optional} objects — the static
     /// registry from reflection.rs, not tied to any entity. Lets the
     /// Inspector's section headers use the same names as the rest of
     /// the reflection layer instead of keeping a separate client-side
@@ -708,6 +761,43 @@ impl EngineWorld {
             kind.id(),
             events::NONE,
         );
+    }
+
+    /// Records that `kind` was added to the entity behind `handle` (ADR-037).
+    fn record_component_added(&mut self, handle: u32, kind: ComponentKind) {
+        self.event_queue.push(
+            events::KIND_COMPONENT_ADDED,
+            handle,
+            kind.id(),
+            events::NONE,
+        );
+    }
+
+    /// Records that `kind` was removed from the entity behind `handle`
+    /// (ADR-037).
+    fn record_component_removed(&mut self, handle: u32, kind: ComponentKind) {
+        self.event_queue.push(
+            events::KIND_COMPONENT_REMOVED,
+            handle,
+            kind.id(),
+            events::NONE,
+        );
+    }
+
+    /// The start shared by `set_component_json`, `add_component_json` and
+    /// `remove_component`: resolves the handle and the kind name, or returns
+    /// the message all three report for each failure.
+    fn resolve_component_target(
+        &self,
+        handle: u32,
+        kind: &str,
+    ) -> Result<(Entity, ComponentKind), String> {
+        let entity = self
+            .resolve_handle(handle)
+            .ok_or_else(|| "entity not found".to_string())?;
+        let kind =
+            ComponentKind::from_str(kind).ok_or_else(|| "unknown component kind".to_string())?;
+        Ok((entity, kind))
     }
 }
 
@@ -958,6 +1048,187 @@ mod tests {
         assert_eq!(
             reflect_error_to_message(reflection::ReflectError::ComponentAlreadyPresent),
             "component already present on entity"
+        );
+    }
+
+    fn component_added(handle: u32, kind: ComponentKind) -> [u32; 4] {
+        [
+            events::KIND_COMPONENT_ADDED,
+            handle,
+            kind.id(),
+            events::NONE,
+        ]
+    }
+
+    fn component_removed(handle: u32, kind: ComponentKind) -> [u32; 4] {
+        [
+            events::KIND_COMPONENT_REMOVED,
+            handle,
+            kind.id(),
+            events::NONE,
+        ]
+    }
+
+    const VELOCITY_ONE_X: &str = r#"{"value":[1.0,0.0,0.0]}"#;
+
+    #[test]
+    fn add_component_json_adds_velocity_and_records_component_added() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        let rejection = world.add_component_json(handle, "Velocity", VELOCITY_ONE_X);
+
+        assert!(rejection.is_none(), "add should succeed: {:?}", rejection);
+        assert!(
+            world
+                .list_components(handle)
+                .contains(&"Velocity".to_string())
+        );
+        // Exactly one record: no ComponentChanged for the initial value.
+        assert_eq!(
+            world.drain_events(),
+            component_added(handle, ComponentKind::Velocity).to_vec()
+        );
+    }
+
+    #[test]
+    fn added_velocity_moves_the_entity_and_removed_velocity_stops_it() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        assert!(
+            world
+                .add_component_json(handle, "Velocity", VELOCITY_ONE_X)
+                .is_none()
+        );
+        world.tick(1.0);
+        assert_eq!(world.get_position(handle), Some(vec![1.0, 0.0, 0.0]));
+
+        assert!(world.remove_component(handle, "Velocity").is_none());
+        world.tick(1.0);
+        assert_eq!(world.get_position(handle), Some(vec![1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn rejected_add_component_json_reports_why_and_records_nothing() {
+        let mut world = EngineWorld::new();
+        let static_handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        let dynamic_handle = world.spawn_dynamic_object("Mover", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert_eq!(
+            world.add_component_json(999, "Velocity", VELOCITY_ONE_X),
+            Some("entity not found".to_string())
+        );
+        assert_eq!(
+            world.add_component_json(static_handle, "NoSuchKind", "{}"),
+            Some("unknown component kind".to_string())
+        );
+        let invalid = world.add_component_json(static_handle, "Velocity", "not json");
+        assert!(invalid.is_some_and(|m| m.starts_with("invalid JSON")));
+        let mandatory = world.add_component_json(static_handle, "LocalTransform", "{}");
+        assert!(mandatory.is_some_and(|m| m.contains("cannot be added")));
+        assert_eq!(
+            world.add_component_json(dynamic_handle, "Velocity", VELOCITY_ONE_X),
+            Some("component already present on entity".to_string())
+        );
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn remove_component_removes_velocity_and_records_component_removed() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_dynamic_object("Mover", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        world.drain_events();
+
+        let rejection = world.remove_component(handle, "Velocity");
+
+        assert!(
+            rejection.is_none(),
+            "remove should succeed: {:?}",
+            rejection
+        );
+        assert!(world.get_component_json(handle, "Velocity").is_none());
+        assert_eq!(
+            world.drain_events(),
+            component_removed(handle, ComponentKind::Velocity).to_vec()
+        );
+    }
+
+    #[test]
+    fn rejected_remove_component_reports_why_and_records_nothing() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        assert_eq!(
+            world.remove_component(999, "Velocity"),
+            Some("entity not found".to_string())
+        );
+        assert_eq!(
+            world.remove_component(handle, "NoSuchKind"),
+            Some("unknown component kind".to_string())
+        );
+        assert_eq!(
+            world.remove_component(handle, "Velocity"),
+            Some("component not present on entity".to_string())
+        );
+        let mandatory = world.remove_component(handle, "LocalTransform");
+        assert!(mandatory.is_some_and(|m| m.contains("cannot be removed")));
+
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn component_change_after_remove_and_add_is_not_collapsed_with_the_earlier_one() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_dynamic_object("Mover", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        world.drain_events();
+        let changed = r#"{"value":[2.0,0.0,0.0]}"#;
+
+        assert!(
+            world
+                .set_component_json(handle, "Velocity", changed)
+                .is_none()
+        );
+        assert!(world.remove_component(handle, "Velocity").is_none());
+        assert!(
+            world
+                .add_component_json(handle, "Velocity", VELOCITY_ONE_X)
+                .is_none()
+        );
+        assert!(
+            world
+                .set_component_json(handle, "Velocity", changed)
+                .is_none()
+        );
+
+        let velocity = ComponentKind::Velocity;
+        let expected: Vec<u32> = [
+            component_changed(handle, velocity),
+            component_removed(handle, velocity),
+            component_added(handle, velocity),
+            component_changed(handle, velocity),
+        ]
+        .concat();
+        assert_eq!(world.drain_events(), expected);
+    }
+
+    #[test]
+    fn default_component_json_is_offered_for_velocity_only_and_add_accepts_it() {
+        let json = EngineWorld::default_component_json("Velocity").expect("Velocity has a default");
+        assert!(EngineWorld::default_component_json("LocalTransform").is_none());
+        assert!(EngineWorld::default_component_json("NoSuchKind").is_none());
+
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        assert!(
+            world
+                .add_component_json(handle, "Velocity", &json)
+                .is_none()
         );
     }
 
