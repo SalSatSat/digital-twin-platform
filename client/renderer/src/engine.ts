@@ -1,5 +1,9 @@
 import init, { EngineWorld } from "dt-engine-wasm";
 import { EventDispatcher, drainAndDispatch } from "./events";
+import { ReflectionError } from "./reflection-error";
+
+// Re-exported so existing importers of "./engine" keep working.
+export { ReflectionError };
 
 // ── Errors ────────────────────────────────────────────────
 /**
@@ -13,19 +17,6 @@ export class HierarchyError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HierarchyError";
-  }
-}
-
-/**
- * Thrown by setComponentJson when a write is rejected — bad JSON shape,
- * or a semantic validation failure (e.g. "near must be less than far",
- * an unregistered category). The message is meant to be shown to the
- * user directly in the Inspector, not just logged.
- */
-export class ReflectionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ReflectionError";
   }
 }
 

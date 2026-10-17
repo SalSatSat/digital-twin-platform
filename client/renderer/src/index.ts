@@ -1,6 +1,13 @@
 export { Engine, HierarchyError, ReflectionError } from "./engine";
 export type { EntityHierarchyNode } from "./engine";
 export {
+  addDefaultComponent,
+  addableKinds,
+  parseComponentKinds,
+  removeOptionalComponent,
+} from "./component-edit";
+export type { ComponentEditEngine, ComponentKindInfo } from "./component-edit";
+export {
   affectsComponent,
   affectsEntity,
   affectsEntityListing,
