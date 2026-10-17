@@ -114,3 +114,60 @@ Removing `Velocity` makes an entity stationary through `MovementSystem`'s
 query, and adding it makes the entity move again. The Inspector's Add and
 Remove actions arrive in the same phase as this API, so it has a real consumer
 and a browser check from the start.
+
+
+## Addendum: Implementation Notes (2026-10-17)
+Phase 20a shipped as decided, in this order: reflection, the `EngineWorld`
+calls and events, the client decoder and wrappers, the respawn guard, then
+the Inspector. What the implementation added or changed:
+
+- **Decision 1: the flag is a type, not a bool.** The descriptor's `optional`
+  field is an `Option<OptionalOps>` holding `add_from_json`, `remove` and
+  `default_json`, with `is_optional()` on top. A mandatory descriptor cannot
+  carry add or remove functions, and an optional one cannot lack them. The
+  strict checks live once, in `reflection::add_component` and
+  `remove_component`, in this order: the entity exists, the kind is optional,
+  the entity does not already have the component (or does have it, for a
+  remove), then the component converts the JSON. A mandatory kind reports
+  "cannot be added" even when the entity has it.
+- **The Inspector learns what is optional from the registry.** The ADR did
+  not say how. `ComponentKindInfo`, the `list_component_kinds` payload,
+  gained `optional`, and `parseComponentKinds` throws on a payload without
+  it. That is what a stale WASM binding looks like, and a loud error beats
+  an Inspector that silently lacks its Add button.
+- **Decision 3: defaults.** `default_component_json` is a static on
+  `EngineWorld`. The `Velocity` default is serialized by the same path as
+  `get_component_json`, so it cannot drift from the wire shape. A test
+  requires every optional kind's default to be accepted by its own add,
+  which is the guard for Phase 20b.
+- **Decision 6: predicates.** `affectsEntity` is true for an add or remove
+  of any component on the handle, since the set changed. `affectsComponent`
+  is true only for the exact handle and component, so an add or remove of
+  another component does not refresh it. Neither kind affects
+  `affectsHierarchy` or `affectsEntityListing`; tests pin both.
+- **Decision 7 changed: there is no `dynamic` flag.** Deriving it from
+  events would have needed a subscription, a re-derive on resync and
+  cleanup on dispose, all to keep a cached copy of ECS state. Instead
+  `respawnInPlace` asks the engine whether the entity has a `Velocity` at
+  the point of the write, and returns false without writing when it has
+  none. `SceneManager` respawns only when it returns true. The ECS stays
+  the one source of truth however an entity got or lost its `Velocity`, and
+  the guard is unit-tested in `respawn.ts`. This supersedes ADR-036's note
+  that only entities spawned dynamic respawn: any entity with a `Velocity`
+  does now. A static entity placed beyond the boundary costs one engine
+  query per frame in Runtime; moving ones respawn on the first.
+- **Inspector.** An Add Component button lists the optional kinds the
+  entity lacks and adds the engine's default. Optional sections have a
+  remove control and mandatory ones do not. There is no confirmation,
+  because there is no undo yet and removing `Velocity` loses three numbers.
+  The engine's rejection message shows inline, tied to the selected entity.
+  The logic is in `component-edit.ts`, a WASM-free renderer module, because
+  `client/app` has no test runner; `ReflectionError` moved to its own file
+  for the same reason.
+- **Checked in the browser.** Adding `Velocity` to a static entity, giving
+  it a velocity and running it; removing it while running; re-adding it.
+- **Still deferred.** Undo for removal. A UI test harness for `client/app`.
+  Keeping an entity's velocity across a respawn: the reset to (1, 0, 0)
+  predates this ADR, but any entity a user gives a `Velocity` now loses
+  the velocity it was given at its first respawn. `Mesh` and `Material`
+  (Phase 20b) register as optional, each with a default.
