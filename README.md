@@ -263,12 +263,12 @@ _To be determined_
 | Phase 17 | Viewport Click-to-Select — click an entity in the 3D viewport to select it (raycasting against spawned meshes), syncing with the Hierarchy panel's existing selection state | Phase 14   |
 | Phase 18 | Transform Gizmo — translate/rotate gizmo for the whole selection, pivoting at its centre (`W`/`E` switch mode)                         | Phase 17   |
 | Phase 19 | Event Bus — engine-side entity change events (spawn, despawn, reparent, component change) drained once per frame into a typed client dispatcher; replaces the Hierarchy and gizmo polling and the Inspector revision counter. `OnEntitySelected` deferred until a consumer outside React and the renderer needs it (ADR-036)                                                                               | Phase 14   |
+| Phase 20a | Component add/remove API — `add_component_json`/`remove_component` at the WASM boundary (strict; only `Velocity` removable at first), `ComponentAdded`/`ComponentRemoved` events, Inspector Add/Remove Component UI; `SceneManager`'s `dynamic` flag derived from component events | Phase 19 |
 
 **Upcoming**
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 20a | Component add/remove API — `add_component_json`/`remove_component` at the WASM boundary (strict; only `Velocity` removable at first), `ComponentAdded`/`ComponentRemoved` events, Inspector Add/Remove Component UI; `SceneManager`'s `dynamic` flag derived from component events | Phase 19 |
 | Phase 20b | Mesh and Material components — general ECS `Mesh` (primitive shape, or model reference in 20c) and a separate `Material` (base color); renderer builds visuals from them; Inspector edit, registered with the 20a add/remove UI | Phase 20a |
 | Phase 20c | GLB model loading at runtime — render-backend spike, asset cache and key resolver, async-safe attach, disposal, recursive picking; defers glTF-node entities, animation/skinning, Draco/KTX2 and transform scale | Phase 20b |
 | Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20c) so the technique is chosen once | Phase 17, Phase 20c |
