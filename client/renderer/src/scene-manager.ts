@@ -60,8 +60,6 @@ interface SpawnedEntity {
   handle: number;
   name: string;
   mesh: THREE.Mesh;
-  /** Spawned with a Velocity. Only these respawn at the boundary. */
-  dynamic: boolean;
 }
 
 /**
@@ -175,7 +173,7 @@ export class SceneManager {
       );
       const mesh = this.createMesh(entityDef.color);
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh, dynamic: true });
+      this.spawnedEntities.push({ handle, name, mesh });
     }
 
     // Spawn static entities
@@ -194,7 +192,7 @@ export class SceneManager {
         entityDef.position.z,
       );
       this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh, dynamic: false });
+      this.spawnedEntities.push({ handle, name, mesh });
     }
 
     console.log(
@@ -421,8 +419,8 @@ export class SceneManager {
 
   /**
    * Updates all entity mesh positions from the ECS each frame.
-   * Handles boundary respawn for dynamic entities, but only while the
-   * simulation is running (respawnEnabled). Boundary respawn is runtime
+   * Handles boundary respawn for entities with a Velocity, but only while
+   * the simulation is running (respawnEnabled). Boundary respawn is runtime
    * logic: in edit mode it would teleport an entity back to the spawn line
    * and reset its velocity just because an Inspector edit moved it past the
    * boundary. The respawn is done in place (see respawn.ts), so the entity
@@ -441,13 +439,17 @@ export class SceneManager {
       const position = this.engine.getPosition(spawned.handle);
       if (!position) continue;
 
-      if (respawnEnabled && spawned.dynamic && position[0] > boundaryX) {
-        // In place, not despawn and spawn: that keeps the handle and the
-        // entity's children, which a despawn would destroy. The mesh moves
-        // now so it does not draw one frame at the old spot.
-        if (respawnInPlace(this.engine, spawned.handle, spawnX)) {
-          spawned.mesh.position.set(spawnX, position[1], 0.0);
-        }
+      // In place, not despawn and spawn: that keeps the handle and the
+      // entity's children, which a despawn would destroy. respawnInPlace asks
+      // the engine whether the entity has a Velocity, so only moving entities
+      // respawn, however they got it. The mesh moves now so it does not draw
+      // one frame at the old spot.
+      if (
+        respawnEnabled &&
+        position[0] > boundaryX &&
+        respawnInPlace(this.engine, spawned.handle, spawnX)
+      ) {
+        spawned.mesh.position.set(spawnX, position[1], 0.0);
       } else {
         spawned.mesh.position.set(position[0], position[1], position[2]);
         const rotation = this.engine.getRotation(spawned.handle);

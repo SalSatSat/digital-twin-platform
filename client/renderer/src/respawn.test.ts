@@ -11,6 +11,7 @@ function engineWithEntity() {
     getRotation: vi.fn(() => Float32Array.of(0, 0.5, 0, 0.5)),
     setWorldTransform: vi.fn(),
     setComponentJson: vi.fn(),
+    getComponentJson: vi.fn(() => JSON.stringify({ value: [1, 0, 0] })),
   };
 }
 
@@ -58,5 +59,26 @@ describe("respawnInPlace", () => {
     expect(respawned).toBe(false);
     expect(engine.setWorldTransform).not.toHaveBeenCalled();
     expect(engine.setComponentJson).not.toHaveBeenCalled();
+  });
+
+  it("does nothing and reports false if the entity has no Velocity", () => {
+    const engine = {
+      ...engineWithEntity(),
+      getComponentJson: vi.fn(() => undefined),
+    };
+
+    const respawned = respawnInPlace(engine, HANDLE, SPAWN_X);
+
+    expect(respawned).toBe(false);
+    expect(engine.setWorldTransform).not.toHaveBeenCalled();
+    expect(engine.setComponentJson).not.toHaveBeenCalled();
+  });
+
+  it("asks the engine whether the entity it respawns has a Velocity", () => {
+    const engine = engineWithEntity();
+
+    respawnInPlace(engine, HANDLE, SPAWN_X);
+
+    expect(engine.getComponentJson).toHaveBeenCalledWith(HANDLE, "Velocity");
   });
 });

@@ -20,6 +20,7 @@ export interface RespawnEngine {
     rotation: readonly [number, number, number, number],
   ): void;
   setComponentJson(handle: number, kind: string, json: string): void;
+  getComponentJson(handle: number, kind: string): string | undefined;
 }
 
 /** Velocity a respawned entity starts with (what despawn+spawn used to give). */
@@ -27,17 +28,22 @@ export const RESPAWN_VELOCITY: readonly [number, number, number] = [1, 0, 0];
 
 /**
  * Moves the entity to (spawnX, its current y, 0), keeping its rotation, and
- * resets its velocity to RESPAWN_VELOCITY. Returns true if it respawned; if
- * the entity no longer exists, writes nothing and returns false.
+ * resets its velocity to RESPAWN_VELOCITY. Returns true if it respawned.
  *
- * Only call this for entities that have a Velocity component: the velocity
- * write throws ReflectionError otherwise.
+ * Writes nothing and returns false if the entity no longer exists or has no
+ * Velocity: only entities that move respawn, and the engine, not a cached
+ * flag, says which those are. Velocity can be added and removed at runtime
+ * (ADR-037), and the velocity write throws ReflectionError for an entity
+ * without one, which would stop the render loop.
  */
 export function respawnInPlace(
   engine: RespawnEngine,
   handle: number,
   spawnX: number,
 ): boolean {
+  if (engine.getComponentJson(handle, "Velocity") === undefined) {
+    return false;
+  }
   const position = engine.getPosition(handle);
   const rotation = engine.getRotation(handle);
   if (position === undefined || rotation === undefined) {
