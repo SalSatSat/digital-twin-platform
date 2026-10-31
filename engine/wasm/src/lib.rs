@@ -1041,6 +1041,8 @@ mod tests {
         assert_eq!(ComponentKind::Camera.id(), 1);
         assert_eq!(ComponentKind::Velocity.id(), 2);
         assert_eq!(ComponentKind::EntityInfo.id(), 3);
+        assert_eq!(ComponentKind::Mesh.id(), 4);
+        assert_eq!(ComponentKind::Material.id(), 5);
     }
 
     #[test]
@@ -1070,6 +1072,109 @@ mod tests {
     }
 
     const VELOCITY_ONE_X: &str = r#"{"value":[1.0,0.0,0.0]}"#;
+    const MESH_UNIT_BOX: &str = r#"{"shape":{"Box":{"size":[1.0,1.0,1.0]}}}"#;
+    const MATERIAL_WHITE: &str = r#"{"base_color":[1.0,1.0,1.0]}"#;
+
+    #[test]
+    fn add_and_remove_mesh_and_material_record_component_events() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.drain_events();
+
+        for (name, kind, json) in [
+            ("Mesh", ComponentKind::Mesh, MESH_UNIT_BOX),
+            ("Material", ComponentKind::Material, MATERIAL_WHITE),
+        ] {
+            let added = world.add_component_json(handle, name, json);
+            assert!(added.is_none(), "add {name}: {added:?}");
+            assert_eq!(
+                world.drain_events(),
+                component_added(handle, kind).to_vec(),
+                "{name}"
+            );
+
+            let removed = world.remove_component(handle, name);
+            assert!(removed.is_none(), "remove {name}: {removed:?}");
+            assert_eq!(
+                world.drain_events(),
+                component_removed(handle, kind).to_vec(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn editing_mesh_and_material_records_component_changed_with_their_kind_ids() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        assert!(
+            world
+                .add_component_json(handle, "Mesh", MESH_UNIT_BOX)
+                .is_none()
+        );
+        assert!(
+            world
+                .add_component_json(handle, "Material", MATERIAL_WHITE)
+                .is_none()
+        );
+        world.drain_events();
+
+        let mesh =
+            world.set_component_json(handle, "Mesh", r#"{"shape":{"Sphere":{"radius":2.0}}}"#);
+        assert!(mesh.is_none(), "{mesh:?}");
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::Mesh).to_vec()
+        );
+
+        let material =
+            world.set_component_json(handle, "Material", r#"{"base_color":[1.0,0.0,0.0]}"#);
+        assert!(material.is_none(), "{material:?}");
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::Material).to_vec()
+        );
+    }
+
+    #[test]
+    fn rejected_mesh_and_material_writes_name_the_parameter_and_record_nothing() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        let bare = world.spawn_static_object("Bare", 0.0, 0.0, 0.0);
+        assert!(
+            world
+                .add_component_json(handle, "Mesh", MESH_UNIT_BOX)
+                .is_none()
+        );
+        assert!(
+            world
+                .add_component_json(handle, "Material", MATERIAL_WHITE)
+                .is_none()
+        );
+        world.drain_events();
+        let bad_mesh = r#"{"shape":{"Sphere":{"radius":0.0}}}"#;
+        let bad_material = r#"{"base_color":[0.0,2.0,0.0]}"#;
+
+        // Set path (the component is present) and add path (it is not).
+        let results = [
+            world.set_component_json(handle, "Mesh", bad_mesh),
+            world.add_component_json(bare, "Mesh", bad_mesh),
+            world.set_component_json(handle, "Material", bad_material),
+            world.add_component_json(bare, "Material", bad_material),
+        ];
+
+        let parameters = ["radius", "radius", "base_color.g", "base_color.g"];
+        for (result, parameter) in results.iter().zip(parameters) {
+            assert!(
+                result.as_ref().is_some_and(|m| m.contains(parameter)),
+                "{parameter}: {result:?}"
+            );
+        }
+        assert!(world.drain_events().is_empty());
+        let bare_kinds = world.list_components(bare);
+        assert!(!bare_kinds.contains(&"Mesh".to_string()));
+        assert!(!bare_kinds.contains(&"Material".to_string()));
+    }
 
     #[test]
     fn add_component_json_adds_velocity_and_records_component_added() {
@@ -1217,19 +1322,24 @@ mod tests {
     }
 
     #[test]
-    fn default_component_json_is_offered_for_velocity_only_and_add_accepts_it() {
-        let json = EngineWorld::default_component_json("Velocity").expect("Velocity has a default");
-        assert!(EngineWorld::default_component_json("LocalTransform").is_none());
-        assert!(EngineWorld::default_component_json("NoSuchKind").is_none());
+    fn default_component_json_is_offered_for_optional_kinds_only_and_add_accepts_it() {
+        for kind in ["LocalTransform", "Camera", "EntityInfo", "NoSuchKind"] {
+            assert!(
+                EngineWorld::default_component_json(kind).is_none(),
+                "{kind}"
+            );
+        }
 
-        let mut world = EngineWorld::new();
-        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        for kind in ["Velocity", "Mesh", "Material"] {
+            let json = EngineWorld::default_component_json(kind)
+                .unwrap_or_else(|| panic!("{kind} has a default"));
+            let mut world = EngineWorld::new();
+            let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
 
-        assert!(
-            world
-                .add_component_json(handle, "Velocity", &json)
-                .is_none()
-        );
+            let rejection = world.add_component_json(handle, kind, &json);
+
+            assert!(rejection.is_none(), "{kind}: {rejection:?}");
+        }
     }
 
     #[test]

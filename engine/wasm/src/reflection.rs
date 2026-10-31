@@ -5,7 +5,8 @@
 //! it has no gameplay logic of its own.
 
 use dt_engine_core::components::{
-    CameraComponent, EntityInfo, LocalTransform, ProjectionType, Velocity,
+    CameraComponent, EntityInfo, LocalTransform, Material, Mesh, MeshShape, ProjectionType,
+    Velocity,
 };
 use dt_engine_core::world::World;
 use glam::{EulerRot, Quat, Vec3};
@@ -28,6 +29,8 @@ pub enum ComponentKind {
     Camera,
     Velocity,
     EntityInfo,
+    Mesh,
+    Material,
 }
 
 impl ComponentKind {
@@ -39,6 +42,8 @@ impl ComponentKind {
             ComponentKind::Camera => "Camera",
             ComponentKind::Velocity => "Velocity",
             ComponentKind::EntityInfo => "EntityInfo",
+            ComponentKind::Mesh => "Mesh",
+            ComponentKind::Material => "Material",
         }
     }
 
@@ -51,6 +56,8 @@ impl ComponentKind {
             ComponentKind::Camera => 1,
             ComponentKind::Velocity => 2,
             ComponentKind::EntityInfo => 3,
+            ComponentKind::Mesh => 4,
+            ComponentKind::Material => 5,
         }
     }
 
@@ -63,6 +70,8 @@ impl ComponentKind {
             "Camera" => Some(Self::Camera),
             "Velocity" => Some(Self::Velocity),
             "EntityInfo" => Some(Self::EntityInfo),
+            "Mesh" => Some(Self::Mesh),
+            "Material" => Some(Self::Material),
             _ => None,
         }
     }
@@ -164,6 +173,30 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             to_json: entity_info_to_json,
             from_json: entity_info_from_json,
             optional: None,
+        },
+        ComponentDescriptor {
+            kind: ComponentKind::Mesh,
+            display_name: "Mesh",
+            has: mesh_has,
+            to_json: mesh_to_json,
+            from_json: mesh_from_json,
+            optional: Some(OptionalOps {
+                add_from_json: mesh_add_from_json,
+                remove: mesh_remove,
+                default_json: mesh_default_json,
+            }),
+        },
+        ComponentDescriptor {
+            kind: ComponentKind::Material,
+            display_name: "Material",
+            has: material_has,
+            to_json: material_to_json,
+            from_json: material_from_json,
+            optional: Some(OptionalOps {
+                add_from_json: material_add_from_json,
+                remove: material_remove,
+                default_json: material_default_json,
+            }),
         },
     ]
 }
@@ -547,6 +580,191 @@ fn entity_info_from_json(
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+// ─── Mesh and Material ──────────────────────────────────────────────────
+// Plain pass-through, like Velocity: storage shape and wire shape are
+// identical. Values are validated here, at the boundary (ADR-038
+// decision 4), by one function per component that both the set path
+// (`*_from_json`) and the add path (`*_add_from_json`) go through, so the
+// two cannot drift and neither touches the World until validation passes.
+
+fn mesh_has(world: &World, entity: Entity) -> bool {
+    world.get_component::<Mesh>(entity).is_ok()
+}
+
+fn mesh_to_json(world: &World, entity: Entity) -> Result<serde_json::Value, ReflectError> {
+    let mesh = world
+        .get_component::<Mesh>(entity)
+        .map_err(|_| ReflectError::ComponentNotPresent)?;
+    serde_json::to_value(*mesh).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+}
+
+/// Parses and validates a Mesh from its wire JSON.
+fn mesh_from_wire(json: serde_json::Value) -> Result<Mesh, ReflectError> {
+    let mesh: Mesh = serde_json::from_value(json)
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    validate_mesh_shape(&mesh.shape)?;
+    Ok(mesh)
+}
+
+/// Rejects a dimension that is not a finite number greater than zero.
+/// The finite check is not redundant: `inf > 0.0` is true.
+fn validate_dimension(shape: &str, parameter: &str, value: f32) -> Result<(), ReflectError> {
+    if value.is_finite() && value > 0.0 {
+        Ok(())
+    } else {
+        Err(ReflectError::ValidationFailed(format!(
+            "{shape} {parameter} must be a finite number greater than zero (got {value})"
+        )))
+    }
+}
+
+/// Every dimension of every shape must be finite and greater than zero
+/// (ADR-038 decision 4). A Plane's size is a Vec2 whose second component is
+/// its extent along Z, so it is reported as `size.z`.
+fn validate_mesh_shape(shape: &MeshShape) -> Result<(), ReflectError> {
+    match shape {
+        MeshShape::Box { size } => {
+            validate_dimension("Box", "size.x", size.x)?;
+            validate_dimension("Box", "size.y", size.y)?;
+            validate_dimension("Box", "size.z", size.z)
+        }
+        MeshShape::Sphere { radius } => validate_dimension("Sphere", "radius", *radius),
+        MeshShape::Cylinder { radius, height } => {
+            validate_dimension("Cylinder", "radius", *radius)?;
+            validate_dimension("Cylinder", "height", *height)
+        }
+        MeshShape::Plane { size } => {
+            validate_dimension("Plane", "size.x", size.x)?;
+            validate_dimension("Plane", "size.z", size.y)
+        }
+    }
+}
+
+fn mesh_from_json(
+    world: &mut World,
+    entity: Entity,
+    json: serde_json::Value,
+) -> Result<(), ReflectError> {
+    if !world.contains(entity) {
+        return Err(ReflectError::EntityNotFound);
+    }
+    let new_mesh = mesh_from_wire(json)?;
+    let mut mesh = world
+        .get_component_mut::<Mesh>(entity)
+        .map_err(|_| ReflectError::ComponentNotPresent)?;
+    *mesh = new_mesh;
+    Ok(())
+}
+
+fn mesh_add_from_json(
+    world: &mut World,
+    entity: Entity,
+    json: serde_json::Value,
+) -> Result<(), ReflectError> {
+    let mesh = mesh_from_wire(json)?;
+    world
+        .add_component(entity, mesh)
+        .map_err(|_| ReflectError::EntityNotFound)
+}
+
+fn mesh_remove(world: &mut World, entity: Entity) -> Result<(), ReflectError> {
+    world
+        .remove_component::<Mesh>(entity)
+        .map(|_mesh| ())
+        .map_err(|e| match e {
+            hecs::ComponentError::NoSuchEntity => ReflectError::EntityNotFound,
+            hecs::ComponentError::MissingComponent(_) => ReflectError::ComponentNotPresent,
+        })
+}
+
+/// The core default Mesh, serialized by the same path as `mesh_to_json`, so
+/// the default can never drift from the wire shape.
+fn mesh_default_json() -> Result<serde_json::Value, ReflectError> {
+    serde_json::to_value(Mesh::default())
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+}
+
+fn material_has(world: &World, entity: Entity) -> bool {
+    world.get_component::<Material>(entity).is_ok()
+}
+
+fn material_to_json(world: &World, entity: Entity) -> Result<serde_json::Value, ReflectError> {
+    let material = world
+        .get_component::<Material>(entity)
+        .map_err(|_| ReflectError::ComponentNotPresent)?;
+    serde_json::to_value(*material).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+}
+
+/// Parses and validates a Material from its wire JSON.
+fn material_from_wire(json: serde_json::Value) -> Result<Material, ReflectError> {
+    let material: Material = serde_json::from_value(json)
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    validate_material(&material)?;
+    Ok(material)
+}
+
+/// Each channel must be in 0 to 1 (ADR-038 decision 5). NaN and infinity
+/// fall outside the range, so one range check covers non-finite values too.
+fn validate_material(material: &Material) -> Result<(), ReflectError> {
+    let channels = [
+        ("r", material.base_color.x),
+        ("g", material.base_color.y),
+        ("b", material.base_color.z),
+    ];
+    for (channel, value) in channels {
+        if !(0.0..=1.0).contains(&value) {
+            return Err(ReflectError::ValidationFailed(format!(
+                "base_color.{channel} must be a finite number between 0 and 1 (got {value})"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn material_from_json(
+    world: &mut World,
+    entity: Entity,
+    json: serde_json::Value,
+) -> Result<(), ReflectError> {
+    if !world.contains(entity) {
+        return Err(ReflectError::EntityNotFound);
+    }
+    let new_material = material_from_wire(json)?;
+    let mut material = world
+        .get_component_mut::<Material>(entity)
+        .map_err(|_| ReflectError::ComponentNotPresent)?;
+    *material = new_material;
+    Ok(())
+}
+
+fn material_add_from_json(
+    world: &mut World,
+    entity: Entity,
+    json: serde_json::Value,
+) -> Result<(), ReflectError> {
+    let material = material_from_wire(json)?;
+    world
+        .add_component(entity, material)
+        .map_err(|_| ReflectError::EntityNotFound)
+}
+
+fn material_remove(world: &mut World, entity: Entity) -> Result<(), ReflectError> {
+    world
+        .remove_component::<Material>(entity)
+        .map(|_material| ())
+        .map_err(|e| match e {
+            hecs::ComponentError::NoSuchEntity => ReflectError::EntityNotFound,
+            hecs::ComponentError::MissingComponent(_) => ReflectError::ComponentNotPresent,
+        })
+}
+
+/// The core default Material (white), serialized by the same path as
+/// `material_to_json`.
+fn material_default_json() -> Result<serde_json::Value, ReflectError> {
+    serde_json::to_value(Material::default())
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -718,12 +936,18 @@ mod tests {
         ComponentKind::EntityInfo,
     ];
 
+    const OPTIONAL_KINDS: [ComponentKind; 3] = [
+        ComponentKind::Velocity,
+        ComponentKind::Mesh,
+        ComponentKind::Material,
+    ];
+
     #[test]
-    fn velocity_is_the_only_optional_component() {
+    fn only_velocity_mesh_and_material_are_optional() {
         for descriptor in registry() {
             assert_eq!(
                 descriptor.is_optional(),
-                descriptor.kind == ComponentKind::Velocity,
+                OPTIONAL_KINDS.contains(&descriptor.kind),
                 "{:?}",
                 descriptor.kind
             );
@@ -734,7 +958,9 @@ mod tests {
     fn component_kind_infos_report_which_kinds_are_optional() {
         let infos = serde_json::to_value(component_kind_infos()).unwrap();
         for info in infos.as_array().unwrap() {
-            let expected = info["kind"] == "Velocity";
+            let expected = OPTIONAL_KINDS
+                .iter()
+                .any(|kind| info["kind"] == kind.as_str());
             assert_eq!(info["optional"], expected, "{}", info["kind"]);
         }
     }
@@ -1052,5 +1278,304 @@ mod tests {
         });
         let result = entity_info_from_json(&mut world, entity, invalid);
         assert!(matches!(result, Err(ReflectError::ValidationFailed(_))));
+    }
+
+    // ─── Mesh and Material (ADR-038) ────────────────────────────────────
+
+    fn entity_in_new_world() -> (World, Entity) {
+        let mut world = World::new();
+        let entity = world.spawn();
+        (world, entity)
+    }
+
+    #[test]
+    fn mesh_round_trips_through_json() {
+        let (mut world, entity) = entity_in_new_world();
+        world
+            .add_component(entity, Mesh::new(MeshShape::Sphere { radius: 2.0 }))
+            .unwrap();
+
+        let json = mesh_to_json(&world, entity).unwrap();
+        // Externally tagged, like Camera's projection (ADR-038 decision 2).
+        assert_eq!(
+            json,
+            serde_json::json!({ "shape": { "Sphere": { "radius": 2.0 } } })
+        );
+
+        let updated = serde_json::json!({ "shape": { "Plane": { "size": [4.0, 6.0] } } });
+        mesh_from_json(&mut world, entity, updated).unwrap();
+
+        let mesh = world.get_component::<Mesh>(entity).unwrap();
+        assert_eq!(
+            mesh.shape,
+            MeshShape::Plane {
+                size: glam::Vec2::new(4.0, 6.0)
+            }
+        );
+    }
+
+    #[test]
+    fn mesh_from_json_rejects_unknown_variants_and_malformed_shapes() {
+        let (mut world, entity) = entity_in_new_world();
+        world.add_component(entity, Mesh::default()).unwrap();
+
+        for json in [
+            serde_json::json!({ "shape": { "Torus": { "radius": 1.0 } } }),
+            serde_json::json!({ "shape": { "Sphere": {} } }),
+            serde_json::json!({ "shape": { "Box": { "size": [1.0, 1.0] } } }),
+            serde_json::json!({}),
+        ] {
+            let result = mesh_from_json(&mut world, entity, json.clone());
+            assert!(
+                matches!(result, Err(ReflectError::DeserializationFailed(_))),
+                "{json}"
+            );
+        }
+
+        let mesh = world.get_component::<Mesh>(entity).unwrap();
+        assert_eq!(*mesh, Mesh::default());
+    }
+
+    #[test]
+    fn mesh_from_json_rejects_bad_dimensions_and_leaves_the_mesh_unchanged() {
+        let (mut world, entity) = entity_in_new_world();
+        world.add_component(entity, Mesh::default()).unwrap();
+
+        // (payload, the parameter the message must name). Each payload has
+        // exactly one bad dimension, so the named parameter is unambiguous.
+        let cases = [
+            (
+                serde_json::json!({ "shape": { "Box": { "size": [0.0, 1.0, 1.0] } } }),
+                "size.x",
+            ),
+            (
+                serde_json::json!({ "shape": { "Box": { "size": [1.0, -1.0, 1.0] } } }),
+                "size.y",
+            ),
+            (
+                serde_json::json!({ "shape": { "Box": { "size": [1.0, 1.0, 0.0] } } }),
+                "size.z",
+            ),
+            (
+                serde_json::json!({ "shape": { "Sphere": { "radius": 0.0 } } }),
+                "radius",
+            ),
+            (
+                serde_json::json!({ "shape": { "Sphere": { "radius": -1.0 } } }),
+                "radius",
+            ),
+            (
+                serde_json::json!({ "shape": { "Cylinder": { "radius": 0.0, "height": 2.0 } } }),
+                "radius",
+            ),
+            (
+                serde_json::json!({ "shape": { "Cylinder": { "radius": 0.5, "height": 0.0 } } }),
+                "height",
+            ),
+            (
+                serde_json::json!({ "shape": { "Plane": { "size": [0.0, 10.0] } } }),
+                "size.x",
+            ),
+            (
+                serde_json::json!({ "shape": { "Plane": { "size": [10.0, 0.0] } } }),
+                "size.z",
+            ),
+        ];
+
+        for (json, parameter) in cases {
+            match mesh_from_json(&mut world, entity, json.clone()) {
+                Err(ReflectError::ValidationFailed(message)) => {
+                    assert!(message.contains(parameter), "{json}: {message}");
+                }
+                other => panic!("{json}: expected ValidationFailed, got {other:?}"),
+            }
+        }
+
+        // Rejected writes must not have partially applied.
+        let mesh = world.get_component::<Mesh>(entity).unwrap();
+        assert_eq!(*mesh, Mesh::default());
+    }
+
+    #[test]
+    fn validate_mesh_shape_rejects_non_finite_dimensions() {
+        // JSON cannot carry NaN or infinity, but a Rust caller can, and a
+        // positivity check alone would let infinity through (inf > 0).
+        let shapes = [
+            MeshShape::Box {
+                size: Vec3::new(f32::NAN, 1.0, 1.0),
+            },
+            MeshShape::Box {
+                size: Vec3::new(1.0, f32::INFINITY, 1.0),
+            },
+            MeshShape::Sphere {
+                radius: f32::INFINITY,
+            },
+            MeshShape::Cylinder {
+                radius: 0.5,
+                height: f32::NAN,
+            },
+            MeshShape::Plane {
+                size: glam::Vec2::new(1.0, f32::INFINITY),
+            },
+        ];
+
+        for shape in shapes {
+            let result = validate_mesh_shape(&shape);
+            assert!(
+                matches!(result, Err(ReflectError::ValidationFailed(_))),
+                "{shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn material_round_trips_through_json() {
+        let (mut world, entity) = entity_in_new_world();
+        world
+            .add_component(entity, Material::new(Vec3::new(0.25, 0.5, 0.75)))
+            .unwrap();
+
+        let json = material_to_json(&world, entity).unwrap();
+        assert_eq!(json, serde_json::json!({ "base_color": [0.25, 0.5, 0.75] }));
+
+        let updated = serde_json::json!({ "base_color": [1.0, 0.0, 0.5] });
+        material_from_json(&mut world, entity, updated).unwrap();
+
+        let material = world.get_component::<Material>(entity).unwrap();
+        assert_eq!(material.base_color, Vec3::new(1.0, 0.0, 0.5));
+    }
+
+    #[test]
+    fn material_from_json_rejects_bad_colors_and_leaves_the_material_unchanged() {
+        let (mut world, entity) = entity_in_new_world();
+        world.add_component(entity, Material::default()).unwrap();
+
+        let cases = [
+            (
+                serde_json::json!({ "base_color": [1.5, 0.0, 0.0] }),
+                "base_color.r",
+            ),
+            (
+                serde_json::json!({ "base_color": [0.0, -0.25, 0.0] }),
+                "base_color.g",
+            ),
+            (
+                serde_json::json!({ "base_color": [0.0, 0.0, 2.0] }),
+                "base_color.b",
+            ),
+        ];
+
+        for (json, parameter) in cases {
+            match material_from_json(&mut world, entity, json.clone()) {
+                Err(ReflectError::ValidationFailed(message)) => {
+                    assert!(message.contains(parameter), "{json}: {message}");
+                }
+                other => panic!("{json}: expected ValidationFailed, got {other:?}"),
+            }
+        }
+
+        let material = world.get_component::<Material>(entity).unwrap();
+        assert_eq!(*material, Material::default());
+    }
+
+    #[test]
+    fn validate_material_rejects_non_finite_colors() {
+        let colors = [
+            Vec3::new(f32::NAN, 0.0, 0.0),
+            Vec3::new(0.0, f32::INFINITY, 0.0),
+            Vec3::new(0.0, 0.0, f32::NEG_INFINITY),
+        ];
+
+        for base_color in colors {
+            let result = validate_material(&Material::new(base_color));
+            assert!(
+                matches!(result, Err(ReflectError::ValidationFailed(_))),
+                "{base_color:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn add_component_adds_mesh_and_material_from_their_wire_json() {
+        let (mut world, entity) = entity_in_new_world();
+        let mesh_json =
+            serde_json::json!({ "shape": { "Cylinder": { "radius": 0.5, "height": 2.0 } } });
+        let material_json = serde_json::json!({ "base_color": [0.25, 0.5, 0.75] });
+
+        add_component(&mut world, entity, ComponentKind::Mesh, mesh_json).unwrap();
+        add_component(&mut world, entity, ComponentKind::Material, material_json).unwrap();
+
+        let mesh = world.get_component::<Mesh>(entity).unwrap();
+        assert_eq!(
+            *mesh,
+            Mesh::new(MeshShape::Cylinder {
+                radius: 0.5,
+                height: 2.0
+            })
+        );
+        let material = world.get_component::<Material>(entity).unwrap();
+        assert_eq!(*material, Material::new(Vec3::new(0.25, 0.5, 0.75)));
+    }
+
+    #[test]
+    fn add_component_rejects_invalid_mesh_and_material_and_attaches_nothing() {
+        let (mut world, entity) = entity_in_new_world();
+        let bad_mesh = serde_json::json!({ "shape": { "Sphere": { "radius": 0.0 } } });
+        let bad_material = serde_json::json!({ "base_color": [0.0, 1.5, 0.0] });
+
+        let mesh_result = add_component(&mut world, entity, ComponentKind::Mesh, bad_mesh);
+        let material_result =
+            add_component(&mut world, entity, ComponentKind::Material, bad_material);
+
+        assert!(matches!(
+            mesh_result,
+            Err(ReflectError::ValidationFailed(_))
+        ));
+        assert!(matches!(
+            material_result,
+            Err(ReflectError::ValidationFailed(_))
+        ));
+        assert!(list_components(&world, entity).is_empty());
+    }
+
+    #[test]
+    fn remove_component_removes_mesh_and_material() {
+        let (mut world, entity) = entity_in_new_world();
+        world.add_component(entity, Mesh::default()).unwrap();
+        world.add_component(entity, Material::default()).unwrap();
+
+        remove_component(&mut world, entity, ComponentKind::Mesh).unwrap();
+
+        // Mesh and Material are independent: removing one leaves the other.
+        assert!(!mesh_has(&world, entity));
+        assert!(material_has(&world, entity));
+
+        remove_component(&mut world, entity, ComponentKind::Material).unwrap();
+        assert!(!material_has(&world, entity));
+    }
+
+    #[test]
+    fn default_component_json_for_mesh_and_material_is_the_core_default() {
+        assert_eq!(
+            default_component_json(ComponentKind::Mesh),
+            Some(serde_json::json!({ "shape": { "Box": { "size": [1.0, 1.0, 1.0] } } }))
+        );
+        assert_eq!(
+            default_component_json(ComponentKind::Material),
+            Some(serde_json::json!({ "base_color": [1.0, 1.0, 1.0] }))
+        );
+    }
+
+    #[test]
+    fn list_components_reports_mesh_and_material_when_present() {
+        let (mut world, entity) = entity_in_new_world();
+        assert!(list_components(&world, entity).is_empty());
+
+        world.add_component(entity, Mesh::default()).unwrap();
+        world.add_component(entity, Material::default()).unwrap();
+
+        let kinds = list_components(&world, entity);
+        assert!(kinds.contains(&ComponentKind::Mesh));
+        assert!(kinds.contains(&ComponentKind::Material));
     }
 }
