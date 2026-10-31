@@ -36,6 +36,8 @@ export const COMPONENT_KIND_ID = {
   Camera: 1,
   Velocity: 2,
   EntityInfo: 3,
+  Mesh: 4,
+  Material: 5,
 } as const;
 
 export type ComponentKindName = keyof typeof COMPONENT_KIND_ID;

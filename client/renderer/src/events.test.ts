@@ -42,6 +42,8 @@ describe("wire constants", () => {
       Camera: 1,
       Velocity: 2,
       EntityInfo: 3,
+      Mesh: 4,
+      Material: 5,
     });
   });
 });
@@ -81,6 +83,8 @@ describe("decodeEvents", () => {
     [1, "Camera"],
     [2, "Velocity"],
     [3, "EntityInfo"],
+    [4, "Mesh"],
+    [5, "Material"],
   ])("decodes ComponentChanged with component id %i as %s", (id, name) => {
     expect(
       decodeEvents(words([EVENT_KIND.ComponentChanged, 7, id, NONE])),
@@ -92,6 +96,8 @@ describe("decodeEvents", () => {
     [1, "Camera"],
     [2, "Velocity"],
     [3, "EntityInfo"],
+    [4, "Mesh"],
+    [5, "Material"],
   ])("decodes ComponentAdded with component id %i as %s", (id, name) => {
     expect(
       decodeEvents(words([EVENT_KIND.ComponentAdded, 7, id, NONE])),
@@ -103,6 +109,8 @@ describe("decodeEvents", () => {
     [1, "Camera"],
     [2, "Velocity"],
     [3, "EntityInfo"],
+    [4, "Mesh"],
+    [5, "Material"],
   ])("decodes ComponentRemoved with component id %i as %s", (id, name) => {
     expect(
       decodeEvents(words([EVENT_KIND.ComponentRemoved, 7, id, NONE])),
@@ -379,7 +387,14 @@ describe("affectsHierarchy", () => {
     expect(affectsHierarchy([event])).toBe(true);
   });
 
-  it.each(["LocalTransform", "Camera", "Velocity", "EntityInfo"] as const)(
+  it.each([
+    "LocalTransform",
+    "Camera",
+    "Velocity",
+    "EntityInfo",
+    "Mesh",
+    "Material",
+  ] as const)(
     "is false for a %s change, which cannot alter who exists or who is whose parent",
     (component) => {
       expect(affectsHierarchy([changed(component)])).toBe(false);
