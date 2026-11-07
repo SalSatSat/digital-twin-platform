@@ -596,15 +596,6 @@ export class SceneManager {
   }
 
   /**
-   * Returns the Three.js mesh for an entity handle, or null if there
-   * is none (an entity without a Mesh component has none). Used by the
-   * Renderer to attach the transform gizmo.
-   */
-  getEntityMesh(handle: number): THREE.Mesh | null {
-    return this.meshes.getMesh(handle);
-  }
-
-  /**
    * True while the editor camera is in fly mode (right mouse held),
    * when WASD is camera movement rather than a shortcut.
    */

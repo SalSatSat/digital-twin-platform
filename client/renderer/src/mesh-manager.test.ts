@@ -329,6 +329,24 @@ describe("changing visuals", () => {
     );
   });
 
+  it("keeps its Material while the Mesh is gone, and uses it when the Mesh returns", () => {
+    const fixture = setup();
+    spawnVisual(fixture, 1, BOX, material(0xff0000));
+
+    fixture.engine.removeComponent(1, "Mesh");
+    fixture.engine.emit(removed(1, "Mesh"));
+    fixture.manager.update();
+    expect(fixture.manager.getMesh(1)).toBeNull();
+
+    fixture.engine.setComponent(1, "Mesh", UNIT_BOX);
+    fixture.engine.emit(added(1, "Mesh"));
+    fixture.manager.update();
+
+    expect(standard(fixture.manager.getMesh(1)!).color.getHexString()).toBe(
+      "ff0000",
+    );
+  });
+
   it("removes and disposes the visual when the Mesh is removed", () => {
     const fixture = setup();
     spawnVisual(fixture, 1, BOX, material(0xff0000));

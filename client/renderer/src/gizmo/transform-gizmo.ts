@@ -2,6 +2,7 @@ import * as THREE from "three/webgpu";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Engine, EntityHierarchyNode } from "../engine";
 import { ParentMap } from "./parent-map";
+import { resolveGizmoTargets } from "./targets";
 
 type Vec3Tuple = [number, number, number];
 type QuatTuple = [number, number, number, number];
@@ -29,7 +30,9 @@ interface DragStart {
  *
  * An entity whose ancestor is also selected is not moved directly, so
  * it follows its ancestor instead of moving twice. Hidden entities are
- * ignored (not counted in the pivot, not moved).
+ * ignored (not counted in the pivot, not moved). Whether an entity is
+ * targetable comes from the engine (see targets.ts), not from anything
+ * drawn, so an entity without a Mesh, such as a camera, gets the gizmo too.
  *
  * Modes: translate and rotate (the ECS has no scale). Rotation is about
  * the selection's pivot, so a multi-selection turns as a rigid group.
@@ -40,7 +43,6 @@ export class TransformGizmo {
   private scene: THREE.Scene;
   private canvas: HTMLElement;
   private engine: Engine;
-  private getMesh: (handle: number) => THREE.Object3D | null;
 
   private attached = false;
   private handles: readonly number[] = [];
@@ -55,12 +57,10 @@ export class TransformGizmo {
     camera: THREE.Camera,
     canvas: HTMLElement,
     engine: Engine,
-    getMesh: (handle: number) => THREE.Object3D | null,
   ) {
     this.scene = scene;
     this.canvas = canvas;
     this.engine = engine;
-    this.getMesh = getMesh;
     this.parents = new ParentMap(
       () => JSON.parse(engine.listEntityHierarchy()) as EntityHierarchyNode[],
     );
@@ -153,24 +153,13 @@ export class TransformGizmo {
   }
 
   /**
-   * The selected entities the gizmo moves: alive, visible, and with no
-   * selected (eligible) ancestor.
+   * The selected entities the gizmo moves: alive, visible according to the
+   * engine, and with no selected (eligible) ancestor.
    */
   private resolveTargets(): number[] {
-    const eligible = this.handles.filter(
-      (h) => this.parents.has(h) && this.getMesh(h)?.visible === true,
+    return resolveGizmoTargets(this.handles, this.parents, (handle) =>
+      this.engine.getVisible(handle),
     );
-    const eligibleSet = new Set(eligible);
-    return eligible.filter((h) => !this.hasAncestorIn(h, eligibleSet));
-  }
-
-  private hasAncestorIn(handle: number, set: ReadonlySet<number>): boolean {
-    let parent = this.parents.parentOf(handle);
-    while (parent !== null) {
-      if (set.has(parent)) return true;
-      parent = this.parents.parentOf(parent);
-    }
-    return false;
   }
 
   private averageWorldPosition(

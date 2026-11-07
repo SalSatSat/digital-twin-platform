@@ -134,7 +134,6 @@ export class Renderer {
       this.fallbackCamera,
       canvas,
       engine,
-      (handle) => this.sceneManager.getEntityMesh(handle),
     );
 
     // ResizeObserver, not window "resize" — the canvas's own size can

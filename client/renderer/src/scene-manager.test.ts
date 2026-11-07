@@ -144,7 +144,10 @@ describe("SceneManager and components", () => {
     engine.tick();
     sm.update(0.016, 100, -5, true);
     const cubeA = [...engine.names].find(([, n]) => n === "Cube A")![0];
-    const meshA = sm.getEntityMesh(cubeA)!;
+    const meshA = meshes(scene).find(
+      (m) =>
+        (m.material as THREE.MeshStandardMaterial).color.getHex() === 0x4f9eed,
+    )!;
     expect(meshA.position.toArray()).toEqual([-3, 1.5, 0]);
 
     engine.positions.set(cubeA, [4, 1.5, 0]); // past the boundary at x = 3
