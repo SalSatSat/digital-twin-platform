@@ -1,10 +1,15 @@
 import * as THREE from "three/webgpu";
 import { Engine } from "./engine";
-import type { SceneDefinition, CameraDefinition } from "./scene";
+import type {
+  SceneDefinition,
+  CameraDefinition,
+  EntityComponents,
+} from "./scene";
 import { CameraControls } from "./camera/camera-controls";
 import { CameraTween } from "./camera/camera-tween";
 import { computePresetTransform } from "./gizmo/view-presets";
 import type { ViewPreset } from "./gizmo/view-presets";
+import { MeshManager } from "./mesh-manager";
 import { respawnInPlace } from "./respawn";
 
 /**
@@ -54,12 +59,13 @@ interface SpawnedCamera {
 }
 
 /**
- * Tracks a spawned entity — its ECS handle and Three.js mesh.
+ * Tracks an entity this scene spawned — its ECS handle and name. What it
+ * looks like, if anything, is its Mesh and Material components, drawn by
+ * the MeshManager.
  */
 interface SpawnedEntity {
   handle: number;
   name: string;
-  mesh: THREE.Mesh;
 }
 
 /**
@@ -78,6 +84,8 @@ export class SceneManager {
   private spawnedCameras: SpawnedCamera[] = [];
   private spawnedEntities: SpawnedEntity[] = [];
   private spawnedLights: THREE.Light[] = [];
+  // Draws every entity that has a Mesh from its components (ADR-038).
+  private meshes: MeshManager;
   private activeSceneDef: SceneDefinition | null = null;
   private controls: CameraControls | null = null;
   // Handle of the camera CameraControls is currently driving, so that
@@ -99,6 +107,7 @@ export class SceneManager {
     this.engine = engine;
     this.threeScene = threeScene;
     this.canvas = canvas;
+    this.meshes = new MeshManager(engine, threeScene);
   }
 
   /**
@@ -171,9 +180,8 @@ export class SceneManager {
         entityDef.velocity.y,
         entityDef.velocity.z,
       );
-      const mesh = this.createMesh(entityDef.color);
-      this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh });
+      this.applyComponents(handle, entityDef.components);
+      this.spawnedEntities.push({ handle, name });
     }
 
     // Spawn static entities
@@ -185,14 +193,8 @@ export class SceneManager {
         entityDef.position.y,
         entityDef.position.z,
       );
-      const mesh = this.createMesh(entityDef.color);
-      mesh.position.set(
-        entityDef.position.x,
-        entityDef.position.y,
-        entityDef.position.z,
-      );
-      this.threeScene.add(mesh);
-      this.spawnedEntities.push({ handle, name, mesh });
+      this.applyComponents(handle, entityDef.components);
+      this.spawnedEntities.push({ handle, name });
     }
 
     console.log(
@@ -201,6 +203,21 @@ export class SceneManager {
         `${this.spawnedLights.length} lights, ` +
         `${this.spawnedEntities.length} entities`,
     );
+  }
+
+  /**
+   * Adds an entity's definition-time components, in key order. The engine
+   * validates each value; a rejection throws a ReflectionError, because a
+   * scene definition the engine refuses is a bug to stop on, not an entity
+   * to load half-built.
+   */
+  private applyComponents(
+    handle: number,
+    components: EntityComponents | undefined,
+  ): void {
+    for (const [kind, value] of Object.entries(components ?? {})) {
+      this.engine.addComponentJson(handle, kind, JSON.stringify(value));
+    }
   }
 
   /**
@@ -348,13 +365,11 @@ export class SceneManager {
     // Despawn entities
     for (const spawned of this.spawnedEntities) {
       this.engine.despawnEntity(spawned.handle);
-      this.threeScene.remove(spawned.mesh);
-      spawned.mesh.geometry.dispose();
-      if (spawned.mesh.material instanceof THREE.Material) {
-        spawned.mesh.material.dispose();
-      }
     }
     this.spawnedEntities = [];
+    // Drop their visuals now rather than when the despawn events arrive, so
+    // reloading a scene never draws the old one for a frame.
+    this.meshes.clear();
 
     // Despawn cameras
     for (const spawned of this.spawnedCameras) {
@@ -370,6 +385,15 @@ export class SceneManager {
 
     this.activeSceneDef = null;
     console.log("Scene unloaded.");
+  }
+
+  /**
+   * Unloads the scene and releases the mesh manager's engine subscription.
+   * Call once, when the renderer is torn down.
+   */
+  dispose(): void {
+    this.unloadScene();
+    this.meshes.dispose();
   }
 
   /**
@@ -418,8 +442,9 @@ export class SceneManager {
   }
 
   /**
-   * Updates all entity mesh positions from the ECS each frame.
-   * Handles boundary respawn for entities with a Velocity, but only while
+   * Updates what is drawn from the ECS each frame: the mesh manager
+   * reconciles Mesh and Material changes and follows every visual's
+   * transform. Handles boundary respawn for entities with a Velocity, but only while
    * the simulation is running (respawnEnabled). Boundary respawn is runtime
    * logic: in edit mode it would teleport an entity back to the spawn line
    * and reset its velocity just because an Inspector edit moved it past the
@@ -442,31 +467,20 @@ export class SceneManager {
       // In place, not despawn and spawn: that keeps the handle and the
       // entity's children, which a despawn would destroy. respawnInPlace asks
       // the engine whether the entity has a Velocity, so only moving entities
-      // respawn, however they got it. The mesh moves now so it does not draw
-      // one frame at the old spot.
+      // respawn, however they got it. The visual moves now so it does not
+      // draw one frame at the old spot (the engine reports the new position
+      // only after its next tick).
       if (
         respawnEnabled &&
         position[0] > boundaryX &&
         respawnInPlace(this.engine, spawned.handle, spawnX)
       ) {
-        spawned.mesh.position.set(spawnX, position[1], 0.0);
-      } else {
-        spawned.mesh.position.set(position[0], position[1], position[2]);
-        const rotation = this.engine.getRotation(spawned.handle);
-        if (rotation) {
-          spawned.mesh.quaternion.set(
-            rotation[0],
-            rotation[1],
-            rotation[2],
-            rotation[3],
-          );
-        }
-        const visible = this.engine.getVisible(spawned.handle);
-        if (visible !== undefined) {
-          spawned.mesh.visible = visible;
-        }
+        this.meshes.moveTo(spawned.handle, spawnX, position[1], 0.0);
       }
     }
+
+    // After the respawn above, so a moved entity is not pulled back.
+    this.meshes.update();
 
     // Remove despawned entities from tracking
     this.spawnedEntities = this.spawnedEntities.filter(
@@ -578,25 +592,16 @@ export class SceneManager {
    * edit mode; SceneManager itself has no notion of modes.
    */
   pickEntity(ndc: THREE.Vector2, camera: SceneCamera): number | null {
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(ndc, camera);
-
-    const meshes = this.spawnedEntities
-      .filter((s) => s.mesh.visible)
-      .map((s) => s.mesh);
-    const hits = raycaster.intersectObjects(meshes, false);
-    if (hits.length === 0) return null;
-
-    const spawned = this.spawnedEntities.find((s) => s.mesh === hits[0].object);
-    return spawned?.handle ?? null;
+    return this.meshes.pick(ndc, camera);
   }
 
   /**
    * Returns the Three.js mesh for an entity handle, or null if there
-   * is none. Used by the Renderer to attach the transform gizmo.
+   * is none (an entity without a Mesh component has none). Used by the
+   * Renderer to attach the transform gizmo.
    */
   getEntityMesh(handle: number): THREE.Mesh | null {
-    return this.spawnedEntities.find((s) => s.handle === handle)?.mesh ?? null;
+    return this.meshes.getMesh(handle);
   }
 
   /**
@@ -669,12 +674,6 @@ export class SceneManager {
       near,
       far,
     );
-  }
-
-  private createMesh(color: number): THREE.Mesh {
-    const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const material = new THREE.MeshStandardMaterial({ color });
-    return new THREE.Mesh(geometry, material);
   }
 
   private createLight(def: {

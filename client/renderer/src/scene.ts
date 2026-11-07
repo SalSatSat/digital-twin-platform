@@ -1,3 +1,14 @@
+import { rgbFromInt } from "./visual";
+
+/**
+ * Component values to add to an entity right after it spawns, as wire JSON
+ * keyed by component kind (ADR-038): the same format reflection and the
+ * Inspector use, so what a scene says is also what a future save and load
+ * would persist. They are added in key order. A value the engine rejects
+ * stops the load with a ReflectionError.
+ */
+export type EntityComponents = Record<string, unknown>;
+
 /**
  * Describes a light source in the scene.
  * Lights are Three.js concerns — they don't exist in the ECS.
@@ -27,7 +38,8 @@ export interface DynamicEntityDefinition {
   name: string;
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
-  color: number;
+  /** Optional components to add after the spawn, such as Mesh and Material. */
+  components?: EntityComponents;
 }
 
 /**
@@ -37,7 +49,8 @@ export interface DynamicEntityDefinition {
 export interface StaticEntityDefinition {
   name: string;
   position: { x: number; y: number; z: number };
-  color: number;
+  /** Optional components to add after the spawn, such as Mesh and Material. */
+  components?: EntityComponents;
 }
 
 /**
@@ -65,6 +78,17 @@ export interface SceneDefinition {
 
   /** Static entities to spawn (no velocity). */
   staticEntities: StaticEntityDefinition[];
+}
+
+/** The edge length of the demo cubes, which used to be fixed in the renderer. */
+const CUBE_SIZE = 0.8;
+
+/** A demo cube: a box of CUBE_SIZE in the given 0xrrggbb colour. */
+function cube(color: number): EntityComponents {
+  return {
+    Mesh: { shape: { Box: { size: [CUBE_SIZE, CUBE_SIZE, CUBE_SIZE] } } },
+    Material: { base_color: rgbFromInt(color) },
+  };
 }
 
 /**
@@ -115,19 +139,19 @@ export const DEFAULT_SCENE: SceneDefinition = {
       name: "Cube A",
       position: { x: -3.0, y: 1.5, z: 0.0 },
       velocity: { x: 1.0, y: 0.0, z: 0.0 },
-      color: 0x4f9eed,
+      components: cube(0x4f9eed),
     },
     {
       name: "Cube B",
       position: { x: -3.0, y: 0.0, z: 0.0 },
       velocity: { x: 1.5, y: 0.0, z: 0.0 },
-      color: 0x48bb78,
+      components: cube(0x48bb78),
     },
     {
       name: "Cube C",
       position: { x: -3.0, y: -1.5, z: 0.0 },
       velocity: { x: 0.8, y: 0.0, z: 0.0 },
-      color: 0xf6ad55,
+      components: cube(0xf6ad55),
     },
   ],
 
@@ -135,7 +159,7 @@ export const DEFAULT_SCENE: SceneDefinition = {
     {
       name: "Cube D",
       position: { x: -3.0, y: 3.0, z: 0.0 },
-      color: 0xffffff,
+      components: cube(0xffffff),
     },
   ],
 };

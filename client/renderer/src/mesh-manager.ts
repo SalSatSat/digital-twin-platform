@@ -146,6 +146,11 @@ export class MeshManager {
    * from overwriting it with the engine's position. After a boundary respawn
    * the engine only reports the new position after its next tick, and the
    * visual must not draw one frame at the old spot.
+   *
+   * TODO(refactor): this, and the `moved` set, exist only because boundary
+   * respawn runs in the client (respawn.ts). Once respawn is an engine
+   * system, the engine's position is current after every tick and both go.
+   * Trigger: moving boundary respawn into the engine.
    */
   moveTo(handle: number, x: number, y: number, z: number): void {
     const visual = this.visuals.get(handle);

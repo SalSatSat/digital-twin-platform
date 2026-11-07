@@ -8,6 +8,13 @@
  * destroy a child and leave its mesh behind in the viewport).
  *
  * No Three.js dependency, so it is unit-tested on its own.
+ *
+ * TODO(refactor): boundary respawn is simulation behaviour and belongs in an
+ * engine system, not in the client. It runs outside `tick()`, gated by the
+ * renderer's edit-mode flag, with the boundary and spawn line defined in
+ * renderer.ts (ADR-028 keeps pause as `tick(delta_time)`). Trigger: moving
+ * respawn into the engine, which deletes this file, SceneManager's
+ * boundaryX/spawnX/respawnEnabled parameters and MeshManager.moveTo.
  */
 
 /** The slice of Engine that respawning needs. Engine satisfies it. */
