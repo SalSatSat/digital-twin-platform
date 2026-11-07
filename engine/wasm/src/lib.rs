@@ -622,6 +622,19 @@ impl EngineWorld {
         reflection::default_component_json(kind).map(|value| value.to_string())
     }
 
+    /// The variants of a tagged-enum component kind, each with its default
+    /// wire JSON, as a JSON array of {name, default} objects in display
+    /// order. Each `default` is the complete component JSON with that
+    /// variant at its defaults, ready to pass to `set_component_json`. None
+    /// for an unknown kind or a kind without variants. Static, like
+    /// `default_component_json`: the defaults belong to the engine, so the
+    /// Inspector keeps no client-side copy (ADR-038).
+    pub fn component_variants_json(kind: &str) -> Option<String> {
+        let kind = ComponentKind::from_str(kind)?;
+        let variants = reflection::component_variants(kind)?;
+        serde_json::to_string(&variants).ok()
+    }
+
     /// Returns every reflectable component kind's display name as a
     /// JSON array of {kind, display_name, optional} objects — the static
     /// registry from reflection.rs, not tied to any entity. Lets the
@@ -1074,6 +1087,82 @@ mod tests {
     const VELOCITY_ONE_X: &str = r#"{"value":[1.0,0.0,0.0]}"#;
     const MESH_UNIT_BOX: &str = r#"{"shape":{"Box":{"size":[1.0,1.0,1.0]}}}"#;
     const MATERIAL_WHITE: &str = r#"{"base_color":[1.0,1.0,1.0]}"#;
+
+    fn variants_json(kind: &str) -> Option<serde_json::Value> {
+        EngineWorld::component_variants_json(kind)
+            .map(|json| serde_json::from_str(&json).expect("variants are valid JSON"))
+    }
+
+    #[test]
+    fn component_variants_json_lists_variant_names_in_order() {
+        let variants = variants_json("Mesh").expect("Mesh has variants");
+
+        let names: Vec<&str> = variants
+            .as_array()
+            .expect("an array")
+            .iter()
+            .map(|variant| variant["name"].as_str().expect("a name"))
+            .collect();
+
+        assert_eq!(names, ["Box", "Sphere", "Cylinder", "Plane"]);
+    }
+
+    #[test]
+    fn component_variants_json_carries_each_variants_default_component_json() {
+        let variants = variants_json("Mesh").expect("Mesh has variants");
+
+        assert_eq!(
+            variants,
+            serde_json::json!([
+                { "name": "Box", "default": { "shape": { "Box": { "size": [1.0, 1.0, 1.0] } } } },
+                { "name": "Sphere", "default": { "shape": { "Sphere": { "radius": 0.5 } } } },
+                {
+                    "name": "Cylinder",
+                    "default": { "shape": { "Cylinder": { "radius": 0.5, "height": 2.0 } } }
+                },
+                { "name": "Plane", "default": { "shape": { "Plane": { "size": [10.0, 10.0] } } } },
+            ])
+        );
+    }
+
+    #[test]
+    fn component_variants_json_is_none_without_variants_and_for_unknown_kinds() {
+        for kind in [
+            "Velocity",
+            "Material",
+            "LocalTransform",
+            "Camera",
+            "EntityInfo",
+            "NoSuchKind",
+        ] {
+            assert!(
+                EngineWorld::component_variants_json(kind).is_none(),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_variant_default_is_accepted_by_set_component_json_and_records_a_change() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        assert!(
+            world
+                .add_component_json(handle, "Mesh", MESH_UNIT_BOX)
+                .is_none()
+        );
+        world.drain_events();
+        let variants = variants_json("Mesh").expect("Mesh has variants");
+        let sphere = variants[1]["default"].to_string();
+
+        let rejection = world.set_component_json(handle, "Mesh", &sphere);
+
+        assert!(rejection.is_none(), "{rejection:?}");
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::Mesh).to_vec()
+        );
+    }
 
     #[test]
     fn add_and_remove_mesh_and_material_record_component_events() {

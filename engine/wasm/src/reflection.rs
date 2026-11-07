@@ -111,6 +111,11 @@ pub struct ComponentDescriptor {
     /// `Some` only for components that may be added and removed after
     /// spawn (ADR-037). `None` marks a mandatory component.
     pub optional: Option<OptionalOps>,
+    /// The variants of a tagged-enum component, each with its default wire
+    /// JSON. Empty for a component without variants. It lets the Inspector
+    /// switch a variant without keeping a client-side copy of the defaults
+    /// (ADR-038).
+    pub variants: &'static [VariantDescriptor],
 }
 
 /// Structural operations of an optional component. Kept in one `Option`
@@ -123,6 +128,15 @@ pub struct OptionalOps {
     /// Removes the component. The caller has already checked presence.
     pub remove: fn(&mut World, Entity) -> Result<(), ReflectError>,
     /// The default wire JSON the Inspector offers when adding.
+    pub default_json: fn() -> Result<serde_json::Value, ReflectError>,
+}
+
+/// One variant of a tagged-enum component, such as a `Mesh` shape.
+pub struct VariantDescriptor {
+    /// The variant's name as it appears on the wire, for example "Sphere".
+    pub name: &'static str,
+    /// The complete component wire JSON with this variant at its defaults,
+    /// ready for `from_json` or `add_from_json`.
     pub default_json: fn() -> Result<serde_json::Value, ReflectError>,
 }
 
@@ -145,6 +159,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             to_json: local_transform_to_json,
             from_json: local_transform_from_json,
             optional: None,
+            variants: &[],
         },
         ComponentDescriptor {
             kind: ComponentKind::Velocity,
@@ -157,6 +172,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
                 remove: velocity_remove,
                 default_json: velocity_default_json,
             }),
+            variants: &[],
         },
         ComponentDescriptor {
             kind: ComponentKind::Camera,
@@ -165,6 +181,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             to_json: camera_to_json,
             from_json: camera_from_json,
             optional: None,
+            variants: &[],
         },
         ComponentDescriptor {
             kind: ComponentKind::EntityInfo,
@@ -173,6 +190,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
             to_json: entity_info_to_json,
             from_json: entity_info_from_json,
             optional: None,
+            variants: &[],
         },
         ComponentDescriptor {
             kind: ComponentKind::Mesh,
@@ -185,6 +203,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
                 remove: mesh_remove,
                 default_json: mesh_default_json,
             }),
+            variants: MESH_VARIANTS,
         },
         ComponentDescriptor {
             kind: ComponentKind::Material,
@@ -197,6 +216,7 @@ pub fn registry() -> &'static [ComponentDescriptor] {
                 remove: material_remove,
                 default_json: material_default_json,
             }),
+            variants: &[],
         },
     ]
 }
@@ -226,6 +246,37 @@ pub fn component_kind_infos() -> Vec<ComponentKindInfo> {
             kind: d.kind.as_str(),
             display_name: d.display_name,
             optional: d.is_optional(),
+        })
+        .collect()
+}
+
+/// A variant of a tagged-enum component with its default wire JSON,
+/// JSON-serializable. Used by EngineWorld::component_variants_json()
+/// (lib.rs) so the Inspector's variant switch reads the engine's defaults
+/// instead of keeping a copy client-side (ADR-038).
+#[derive(Debug, Serialize)]
+pub struct ComponentVariantInfo {
+    pub name: &'static str,
+    /// The complete component JSON with this variant at its defaults.
+    pub default: serde_json::Value,
+}
+
+/// The variants of `kind`, in display order, each with its default
+/// component JSON. None for a kind without variants. All or nothing: if any
+/// default cannot be produced, none is returned.
+pub fn component_variants(kind: ComponentKind) -> Option<Vec<ComponentVariantInfo>> {
+    let descriptor = find_descriptor(kind)?;
+    if descriptor.variants.is_empty() {
+        return None;
+    }
+    descriptor
+        .variants
+        .iter()
+        .map(|variant| {
+            Some(ComponentVariantInfo {
+                name: variant.name,
+                default: (variant.default_json)().ok()?,
+            })
         })
         .collect()
 }
@@ -682,6 +733,50 @@ fn mesh_remove(world: &mut World, entity: Entity) -> Result<(), ReflectError> {
 fn mesh_default_json() -> Result<serde_json::Value, ReflectError> {
     serde_json::to_value(Mesh::default())
         .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+}
+
+/// The Mesh variants the Inspector can switch between, in display order.
+const MESH_VARIANTS: &[VariantDescriptor] = &[
+    VariantDescriptor {
+        name: "Box",
+        default_json: mesh_box_default_json,
+    },
+    VariantDescriptor {
+        name: "Sphere",
+        default_json: mesh_sphere_default_json,
+    },
+    VariantDescriptor {
+        name: "Cylinder",
+        default_json: mesh_cylinder_default_json,
+    },
+    VariantDescriptor {
+        name: "Plane",
+        default_json: mesh_plane_default_json,
+    },
+];
+
+/// A Mesh with `shape`, as wire JSON. Every variant default goes through
+/// the same serialization as `mesh_to_json`, so a default can never drift
+/// from the wire shape.
+fn mesh_shape_default_json(shape: MeshShape) -> Result<serde_json::Value, ReflectError> {
+    serde_json::to_value(Mesh::new(shape))
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
+}
+
+fn mesh_box_default_json() -> Result<serde_json::Value, ReflectError> {
+    mesh_shape_default_json(MeshShape::default_box())
+}
+
+fn mesh_sphere_default_json() -> Result<serde_json::Value, ReflectError> {
+    mesh_shape_default_json(MeshShape::default_sphere())
+}
+
+fn mesh_cylinder_default_json() -> Result<serde_json::Value, ReflectError> {
+    mesh_shape_default_json(MeshShape::default_cylinder())
+}
+
+fn mesh_plane_default_json() -> Result<serde_json::Value, ReflectError> {
+    mesh_shape_default_json(MeshShape::default_plane())
 }
 
 fn material_has(world: &World, entity: Entity) -> bool {
@@ -1577,5 +1672,102 @@ mod tests {
         let kinds = list_components(&world, entity);
         assert!(kinds.contains(&ComponentKind::Mesh));
         assert!(kinds.contains(&ComponentKind::Material));
+    }
+
+    // ─── Variant defaults (ADR-038) ─────────────────────────────────────
+
+    fn mesh_variant_defaults() -> Vec<ComponentVariantInfo> {
+        component_variants(ComponentKind::Mesh).expect("Mesh has variants")
+    }
+
+    #[test]
+    fn mesh_variants_are_listed_in_order() {
+        let variants = mesh_variant_defaults();
+
+        let names: Vec<&str> = variants.iter().map(|variant| variant.name).collect();
+
+        assert_eq!(names, ["Box", "Sphere", "Cylinder", "Plane"]);
+    }
+
+    #[test]
+    fn only_mesh_has_variants() {
+        for descriptor in registry() {
+            assert_eq!(
+                component_variants(descriptor.kind).is_some(),
+                descriptor.kind == ComponentKind::Mesh,
+                "{:?}",
+                descriptor.kind
+            );
+        }
+    }
+
+    #[test]
+    fn each_mesh_variant_default_is_that_variant_at_the_core_defaults() {
+        let expected = [
+            (
+                "Box",
+                serde_json::json!({ "shape": { "Box": { "size": [1.0, 1.0, 1.0] } } }),
+            ),
+            (
+                "Sphere",
+                serde_json::json!({ "shape": { "Sphere": { "radius": 0.5 } } }),
+            ),
+            (
+                "Cylinder",
+                serde_json::json!({ "shape": { "Cylinder": { "radius": 0.5, "height": 2.0 } } }),
+            ),
+            (
+                "Plane",
+                serde_json::json!({ "shape": { "Plane": { "size": [10.0, 10.0] } } }),
+            ),
+        ];
+
+        let actual: Vec<(&str, serde_json::Value)> = mesh_variant_defaults()
+            .into_iter()
+            .map(|variant| (variant.name, variant.default))
+            .collect();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn the_first_mesh_variant_default_matches_what_the_add_menu_offers() {
+        let first = mesh_variant_defaults().remove(0);
+
+        assert_eq!(
+            Some(first.default),
+            default_component_json(ComponentKind::Mesh)
+        );
+    }
+
+    #[test]
+    fn every_variant_default_is_accepted_by_add_and_set_and_reads_back_unchanged() {
+        for descriptor in registry() {
+            let Some(variants) = component_variants(descriptor.kind) else {
+                continue;
+            };
+            assert!(
+                descriptor.is_optional(),
+                "{:?}: extend this test for a mandatory kind with variants",
+                descriptor.kind
+            );
+
+            for variant in variants {
+                let label = format!("{:?} {}", descriptor.kind, variant.name);
+                let (mut world, entity) = entity_in_new_world();
+
+                // Add path, on an entity that lacks the component.
+                let added =
+                    add_component(&mut world, entity, descriptor.kind, variant.default.clone());
+                assert!(added.is_ok(), "{label} add: {added:?}");
+
+                // Set path, replacing what the component held.
+                let set = (descriptor.from_json)(&mut world, entity, variant.default.clone());
+                assert!(set.is_ok(), "{label} set: {set:?}");
+
+                let read = (descriptor.to_json)(&world, entity).unwrap();
+                assert_eq!(read, variant.default, "{label} read back");
+            }
+        }
     }
 }
