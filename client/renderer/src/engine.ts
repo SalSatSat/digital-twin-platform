@@ -460,6 +460,18 @@ export class Engine {
   }
 
   /**
+   * Returns the variants of a tagged-enum component kind, each with its
+   * default component JSON, as a JSON array of { name, default } objects in
+   * display order, or undefined for a kind without variants (ADR-038). Parse
+   * it with `parseComponentVariants`; the defaults live in the engine, so
+   * callers keep no copy of them.
+   */
+  componentVariantsJson(kind: string): string | undefined {
+    this.assertInitialized();
+    return EngineWorld.component_variants_json(kind) ?? undefined;
+  }
+
+  /**
    * Returns all registered entity categories as JSON, for populating
    * the Inspector's category dropdown. Includes built-ins and any
    * custom categories added at runtime.

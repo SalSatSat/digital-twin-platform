@@ -74,7 +74,7 @@ export function addableKinds(
 }
 
 /** Runs an engine write; a rejection becomes its message, a bug propagates. */
-function rejectionMessage(write: () => void): string | null {
+export function rejectionMessage(write: () => void): string | null {
   try {
     write();
     return null;
