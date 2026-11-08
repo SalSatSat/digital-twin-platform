@@ -13,11 +13,15 @@ import { AddComponentMenu } from "./inspector/AddComponentMenu";
 import { CameraField } from "./inspector/CameraField";
 import { EntityInfoField } from "./inspector/EntityInfoField";
 import { LocalTransformField } from "./inspector/LocalTransformField";
+import { MaterialField } from "./inspector/MaterialField";
+import { MeshField } from "./inspector/MeshField";
 import { VelocityField } from "./inspector/VelocityField";
 
 const fieldRegistry: Record<string, React.ComponentType<FieldRendererProps>> = {
   Camera: CameraField,
   LocalTransform: LocalTransformField,
+  Material: MaterialField,
+  Mesh: MeshField,
   Velocity: VelocityField,
 };
 
