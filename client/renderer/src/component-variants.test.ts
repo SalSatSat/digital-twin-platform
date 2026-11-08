@@ -2,12 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   componentVariants,
   parseComponentVariants,
-  switchVariant,
   type ComponentVariantsEngine,
 } from "./component-variants";
-import { ReflectionError } from "./reflection-error";
-
-const HANDLE = 7;
 
 const BOX = { name: "Box", default: { shape: { Box: { size: [1, 1, 1] } } } };
 const SPHERE = {
@@ -20,14 +16,11 @@ function listing(...variants: object[]): string {
   return JSON.stringify(variants);
 }
 
-/** An engine that lists Box and Sphere and accepts every write. */
+/** An engine that lists Box and Sphere. */
 function engineWith(overrides: Partial<ComponentVariantsEngine> = {}) {
   return {
     componentVariantsJson: vi.fn((_kind: string): string | undefined =>
       listing(BOX, SPHERE),
-    ),
-    setComponentJson: vi.fn(
-      (_handle: number, _kind: string, _json: string): void => {},
     ),
     ...overrides,
   };
@@ -99,65 +92,6 @@ describe("componentVariants", () => {
 
     expect(() => componentVariants(engine, "Mesh")).toThrow(
       "Malformed component variant list",
-    );
-  });
-});
-
-describe("switchVariant", () => {
-  it("writes the named variant's default over the component", () => {
-    const engine = engineWith();
-
-    const result = switchVariant(engine, HANDLE, "Mesh", "Sphere");
-
-    expect(result).toBeNull();
-    expect(engine.setComponentJson).toHaveBeenCalledWith(
-      HANDLE,
-      "Mesh",
-      JSON.stringify(SPHERE.default),
-    );
-  });
-
-  it("reports an unknown variant without writing", () => {
-    const engine = engineWith();
-
-    const result = switchVariant(engine, HANDLE, "Mesh", "Torus");
-
-    expect(result).toBe("Mesh has no variant Torus");
-    expect(engine.setComponentJson).not.toHaveBeenCalled();
-  });
-
-  it("reports a kind without variants the same way", () => {
-    const engine = engineWith({
-      componentVariantsJson: vi.fn(() => undefined),
-    });
-
-    const result = switchVariant(engine, HANDLE, "Velocity", "Box");
-
-    expect(result).toBe("Velocity has no variant Box");
-    expect(engine.setComponentJson).not.toHaveBeenCalled();
-  });
-
-  it("returns the engine's reason when it rejects the write", () => {
-    const engine = engineWith({
-      setComponentJson: vi.fn(() => {
-        throw new ReflectionError("radius must be greater than zero");
-      }),
-    });
-
-    expect(switchVariant(engine, HANDLE, "Mesh", "Sphere")).toBe(
-      "radius must be greater than zero",
-    );
-  });
-
-  it("rethrows anything that is not a ReflectionError", () => {
-    const engine = engineWith({
-      setComponentJson: vi.fn(() => {
-        throw new Error("boom");
-      }),
-    });
-
-    expect(() => switchVariant(engine, HANDLE, "Mesh", "Sphere")).toThrow(
-      "boom",
     );
   });
 });

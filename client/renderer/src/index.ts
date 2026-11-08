@@ -7,6 +7,15 @@ export {
   removeOptionalComponent,
 } from "./component-edit";
 export type { ComponentEditEngine, ComponentKindInfo } from "./component-edit";
+export { componentVariants } from "./component-variants";
+export type {
+  ComponentVariantInfo,
+  ComponentVariantsEngine,
+} from "./component-variants";
+export { meshVariantName, shapeFields, withShapeField } from "./mesh-edit";
+export type { ShapeField } from "./mesh-edit";
+export { hexToRgb, rgbToHex } from "./visual";
+export type { MaterialJson, MeshJson, MeshShapeJson, Rgb } from "./visual";
 export {
   affectsComponent,
   affectsEntity,

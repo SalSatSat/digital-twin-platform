@@ -1,13 +1,13 @@
 /**
- * Inspector logic for switching a tagged-enum component between its
- * variants (ADR-038), such as a Mesh between Box and Sphere.
+ * The variants of a tagged-enum component, such as a Mesh's Box and Sphere
+ * (ADR-038), as the engine lists them.
  *
  * No Three.js or WASM dependency, so it is unit-tested on its own. The
  * variant names and their defaults come from the engine; the client keeps no
- * copy of them.
+ * copy of them. The Inspector switches variant by passing the chosen
+ * variant's default through useComponentField's debounced `setValue`, the
+ * same path as every other edit, so a pending edit can never overwrite it.
  */
-
-import { rejectionMessage } from "./component-edit";
 
 /** One variant of a component, as the engine lists it. */
 export interface ComponentVariantInfo {
@@ -20,10 +20,9 @@ export interface ComponentVariantInfo {
   defaultJson: string;
 }
 
-/** The slice of Engine that switching a variant needs. */
+/** The slice of Engine that listing variants needs. */
 export interface ComponentVariantsEngine {
   componentVariantsJson(kind: string): string | undefined;
-  setComponentJson(handle: number, kind: string, json: string): void;
 }
 
 /**
@@ -65,33 +64,9 @@ function malformed(problem: string): Error {
  * has none.
  */
 export function componentVariants(
-  engine: Pick<ComponentVariantsEngine, "componentVariantsJson">,
+  engine: ComponentVariantsEngine,
   kind: string,
 ): ComponentVariantInfo[] {
   const json = engine.componentVariantsJson(kind);
   return json === undefined ? [] : parseComponentVariants(json);
-}
-
-/**
- * Replaces the component of `kind` on `handle` with the named variant at its
- * defaults. Returns null on success, or a message meant to be shown to the
- * user: the engine's reason if it rejected the write, or "<kind> has no
- * variant <name>" if the engine does not list that variant. Anything that is
- * not a ReflectionError is rethrown.
- */
-export function switchVariant(
-  engine: ComponentVariantsEngine,
-  handle: number,
-  kind: string,
-  variant: string,
-): string | null {
-  const found = componentVariants(engine, kind).find(
-    (candidate) => candidate.name === variant,
-  );
-  if (found === undefined) {
-    return `${kind} has no variant ${variant}`;
-  }
-  return rejectionMessage(() =>
-    engine.setComponentJson(handle, kind, found.defaultJson),
-  );
 }
