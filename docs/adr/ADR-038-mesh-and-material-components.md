@@ -184,3 +184,83 @@ there.
 The Phase 20b Inspector work has no automated UI test. The logic that can be
 wrong (variant defaults, colour conversion, validation messages) is in pure
 modules with tests, and the rest is verified in the browser.
+
+## Addendum: Implementation Notes (2026-11-08)
+Phase 20b shipped as decided, in this order: the core components, reflection
+(ids 4 and 5, validation, defaults), the client's component ids, the pure
+visual logic, the engine's variant defaults, the mesh manager, the
+`SceneManager` rewiring, the gizmo's targeting, then the Inspector. What the
+implementation added or changed:
+
+- **Decisions 1 to 3: as decided.** Every default, including each shape
+  variant's, is serialized by the same path as the component's `to_json`, so
+  a default cannot drift from the wire shape, and a test requires each one to
+  be accepted by its own add and set.
+- **Decisions 4 and 5: validation.** Set and add share one parse-then-validate
+  function per component, so neither touches the world until it passes. A
+  message names the parameter: `size.x`, `radius`, `height`, `base_color.g`.
+  A plane's second size is reported as `size.z`, because it lies in XZ. The
+  finite check on a dimension is explicit, since `inf > 0` is true. A colour
+  range check needs none, because NaN and infinity fall outside 0 to 1.
+- **Decision 7: the manager.** Events only mark entities dirty, through
+  `handlesToReconcile`, and each dirty entity is reconciled against the
+  engine's current `Mesh` and `Material` by `planVisualUpdate`, which sends
+  only the parts that changed: a colour edit never rebuilds geometry. The
+  default Material is fetched once, lazily, and a missing one throws,
+  because it means the renderer and the WASM package disagree. A malformed
+  `Mesh` counts as no `Mesh`, since a throw stops the render loop (ADR-036).
+  A resync reconciles every visual and every entity in the hierarchy
+  listing: one JSON listing per resync, which is fine now and a scaling item
+  later. Tessellation is a renderer constant: 32 by 16 for a sphere, 32
+  radial segments for a cylinder.
+- **Decision 8: polled, plus `moveTo`.** Position, rotation and visibility
+  are still polled. `MeshManager.moveTo` exists only because boundary respawn
+  runs in the client and the engine reports the new position only after its
+  next tick. It carries a TODO, as does `respawn.ts`: respawn is simulation
+  behaviour and belongs in an engine system, which would delete both.
+- **Decision 9: the gizmo.** Eligibility is `resolveGizmoTargets`
+  (`gizmo/targets.ts`), a pure function over the hierarchy and the engine's
+  visibility, so `TransformGizmo` lost its `getMesh` parameter.
+  `SceneManager.getEntityMesh` had no consumer left and was removed;
+  `MeshManager.getMesh` stays for the tests and for Phase 21. The Runtime
+  Camera, and any entity without a `Mesh`, now gets the gizmo and can be
+  dragged. A hidden entity still does not.
+- **Decision 10: scene definitions.** `SceneDefinition` entities carry
+  `components`, applied by `SceneManager.applyComponents` through
+  `addComponentJson`; a rejected value throws at load. `DEFAULT_SCENE` builds
+  its cubes with a `cube()` helper and `rgbFromInt`. `SceneManager` gained
+  `dispose()`, which the renderer calls on teardown, so the mesh manager
+  releases its engine subscription.
+- **Decision 11 changed: the variants come from the engine.** The ADR said a
+  variant switch resets to "that variant's defaults" and did not say from
+  where. `ComponentDescriptor` gained a `variants` list, exposed as the static
+  `EngineWorld::component_variants_json` and `Engine.componentVariantsJson`,
+  and `componentVariants` parses it strictly. The Inspector switches variant
+  through the hook's debounced `setValue`, not an immediate write, so a
+  pending edit cannot overwrite the new variant. A `switchVariant` helper
+  written first for the immediate write was dead on arrival and was removed.
+- **Colour, checked rather than assumed.** On Three r177, `setRGB` without a
+  colour space draws `97cef7` where `4f9eed` is wanted, so the manager passes
+  `SRGBColorSpace`. Tests pin that the four demo colours draw exactly as the
+  old renderer drew them.
+- **`Material` is independent of `Mesh`.** Removing a `Mesh` leaves its
+  `Material`, and adding a `Mesh` back uses it. Unity differs, since its
+  material lives on the renderer; a test pins this.
+- **Inspector.** `MeshField` has a Shape dropdown from the engine's variants
+  and a numeric row per parameter, and `MaterialField` has a colour swatch
+  with its hex. Row layout lives in `mesh-edit.ts`, a WASM-free renderer
+  module with tests, because `client/app` has no test runner. A variant it
+  has no rows for shows a placeholder. The engine's validation message shows
+  inline, next to the typed value.
+- **Checked in the browser.** The four cubes' colours and size; play-mode
+  respawn; click-to-select and the gizmo; removing and re-adding `Mesh` and
+  `Material`; the gizmo on a mesh-less entity and on the Runtime Camera;
+  editing sizes, a rejected zero, switching every shape, a plane from below,
+  a variant switch right after typing, and the colour picker.
+- **Still deferred.** How `Material` applies to a `Model` (Phase 20c).
+  Moving boundary respawn into an engine system, whose design is a separate
+  system, probably a per-entity component, and the third system that the
+  deferred Scheduler waits for. Moving the Camera's switch defaults, which
+  are still hardcoded in `CameraField`, onto the variants API; that switch
+  also keeps near and far, which defaults alone cannot express. Alpha,
+  roughness, metalness and emission. Undo. A UI test harness for `client/app`.
