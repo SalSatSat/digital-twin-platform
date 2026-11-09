@@ -264,22 +264,23 @@ _To be determined_
 | Phase 18 | Transform Gizmo — translate/rotate gizmo for the whole selection, pivoting at its centre (`W`/`E` switch mode)                         | Phase 17   |
 | Phase 19 | Event Bus — engine-side entity change events (spawn, despawn, reparent, component change) drained once per frame into a typed client dispatcher; replaces the Hierarchy and gizmo polling and the Inspector revision counter. `OnEntitySelected` deferred until a consumer outside React and the renderer needs it (ADR-036)                                                                               | Phase 14   |
 | Phase 20a | Component add/remove API — `add_component_json`/`remove_component` at the WASM boundary (strict; only `Velocity` removable at first), `ComponentAdded`/`ComponentRemoved` events, Inspector Add/Remove Component UI; `SceneManager`'s `dynamic` flag derived from component events | Phase 19 |
-| Phase 20b | Mesh and Material components — general ECS `Mesh` (Box, Sphere, Cylinder and Plane primitives; model reference in 20c) and a separate `Material` (sRGB base colour); a `MeshManager` draws visuals from them, reconciling against engine state on component events; Inspector Shape and Base Color editors, with the shape variants supplied by the engine (`component_variants_json`); the transform gizmo targets by engine visibility, so entities without a `Mesh` get it too (ADR-038) | Phase 20a |
+| Phase 20b | Mesh and Material components — general ECS `Mesh` (Box, Sphere, Cylinder and Plane primitives; model reference in 20d) and a separate `Material` (sRGB base colour); a `MeshManager` draws visuals from them, reconciling against engine state on component events; Inspector Shape and Base Color editors, with the shape variants supplied by the engine (`component_variants_json`); the transform gizmo targets by engine visibility, so entities without a `Mesh` get it too (ADR-038) | Phase 20a |
 
 **Upcoming**
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 20c | GLB model loading at runtime — render-backend spike, asset cache and key resolver, async-safe attach, disposal, recursive picking; defers glTF-node entities, animation/skinning, Draco/KTX2 and transform scale | Phase 20b |
-| Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20c) so the technique is chosen once | Phase 17, Phase 20c |
+| Phase 20c | Transform scale — non-uniform `LocalTransform.scale` (negative mirrors, zero rejected), an exact affine `WorldTransform` drawn from one world matrix per visual, local-only scale writes (`set_local_scale`), a scale gizmo on `R` (each entity about its own origin), an Inspector Scale row, and parameter-free primitives sized by scale (ADR-039) | Phase 20b |
+| Phase 20d | GLB model loading at runtime — render-backend spike, `Model { key }` mesh variant, asset cache and key resolver, async-safe attach, disposal, recursive picking, and `Material` reworked into `MeshRenderer` material slots; defers glTF-node entities, animation/skinning, Draco/KTX2 and client publish | Phase 20c |
+| Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20d) so the technique is chosen once | Phase 17, Phase 20d |
 | Phase 22 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 26)                                            | Phase 13   |
-| Phase 23 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 20c  |
+| Phase 23 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 20d  |
 | Phase 24 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 23   |
 | Phase 25 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 24   |
 | Phase 26 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 22's debug metrics                   | Phase 25   |
 | Phase 27 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 25   |
 | Phase 28 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 27   |
-| Phase 29 | Editor Panel Tabs — Project/Console-style panel tabs (Unity-inspired); deferred from Phase 14 pending further design (tab content, panel placement). Tentatively expects Event Bus for Console-style log content and GLB loading for Project-style asset content — to be confirmed once actually scoped | Phase 19, Phase 20c |
+| Phase 29 | Editor Panel Tabs — Project/Console-style panel tabs (Unity-inspired); deferred from Phase 14 pending further design (tab content, panel placement). Tentatively expects Event Bus for Console-style log content and GLB loading for Project-style asset content — to be confirmed once actually scoped | Phase 19, Phase 20d |
 
 **Not yet scheduled**
 
