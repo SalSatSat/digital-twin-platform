@@ -1,7 +1,7 @@
 # ADR-034: Transform Gizmo — Adopt Three.js TransformControls Behind an Adapter
 
 ## Status
-Accepted
+Accepted. The translate-and-rotate-only mode set is superseded by ADR-039 decision 9.
 
 ## Date
 2026-10-03

@@ -1,7 +1,7 @@
 # ADR-038: Mesh and Material Components
 
 ## Status
-Accepted
+Accepted. Decision 3's primitive parameters are superseded by ADR-039.
 
 ## Date
 2026-10-31
