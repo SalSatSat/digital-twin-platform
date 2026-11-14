@@ -1,7 +1,8 @@
 # ADR-039: Transform Scale
 
 ## Status
-Accepted
+Accepted. Decisions 5 and 6 amended before implementation (rotation
+formula, reparent atomicity, status codes).
 
 ## Date
 2026-11-09
@@ -54,8 +55,10 @@ local scale only.
    - `position()` is exact (the translation column).
    - `rotation()` and `lossy_scale()` come from glam's decomposition. They are
      exact without shear and approximate under it, like Unity's `lossyScale`.
-     With a negative determinant, the decomposition has to put the mirror on
-     some axis. The axis glam uses is pinned by a test, not assumed.
+     `rotation()` is normalised, because under shear the decomposed
+     quaternion is not unit length. With a negative determinant, glam puts
+     the mirror on X: a scale of `(1, -1, 1)` decomposes as `(-1, 1, 1)` and
+     a half turn about Z. A test pins this.
 
 4. **The renderer reads one matrix.** A new `EngineWorld::get_world_matrix`
    returns 16 floats in column-major order, which is the order
@@ -70,21 +73,35 @@ local scale only.
    rotation)`, used by the gizmo and respawn, changes only the local position
    and rotation:
    - local position = inverse parent matrix × position, which is exact;
-   - local rotation = inverse of the parent's decomposed rotation × rotation,
-     which is exact when the parent's world scale is uniform and approximate
-     otherwise;
+   - local rotation = the rotation part of
+     `P⁻¹ · R(rotation) · S_world · S_local⁻¹`, orthonormalised, where `P` is
+     the parent's world matrix, `S_world` the entity's current lossy world
+     scale and `S_local` its local scale. Writing back an unchanged pose is
+     exact, even under a mirrored or negatively scaled parent. The result is
+     approximate only when the requested pose is unreachable with the kept
+     local scale (a rotated child under a non-uniformly scaled parent);
    - the local scale is left as it is.
 
+   `WorldTransform::local_for` implements this, and replaces `relative_to`.
+
    If the result is not finite (a degenerate ancestor, for example scales that
-   underflow), the write is rejected with a new `HierarchyError` variant. At
-   the WASM boundary that is status code 3, and `Engine.setWorldTransform`
-   maps it to its own message.
+   underflow), the write is rejected with a new
+   `HierarchyError::DegenerateTransform` and nothing is written. At the WASM
+   boundary that variant is status code 3 in every method that can return it
+   (`set_world_transform`, and `set_parent` and `remove_parent` with world
+   position kept), and `Engine` maps it to its own message.
 
 6. **Reparenting keeps the world scale.** `set_parent_keep_world` and
    `remove_parent_keep_world` (Unity's `worldPositionStays`) also set the
    child's local scale to its lossy world scale divided by the new parent's
-   lossy world scale, axis by axis. This is exact for uniform scales and
-   approximate under rotation combined with non-uniform scale, as in Unity.
+   lossy world scale, axis by axis. The rotation uses the formula in decision
+   5 with that scale. This is exact for uniform scales of either sign and for
+   mirrors, and approximate under rotation combined with non-uniform scale,
+   as in Unity.
+
+   Both stay atomic: existence, cycle and degeneracy are checked, and the new
+   local is computed, before the hierarchy changes. A `DegenerateTransform`
+   leaves both the hierarchy and the transform untouched.
 
 7. **A local-scale write path.** `EngineWorld::set_local_scale(handle,
    &[f32])` returns a status code: 0 for success, 1 for entity not found, 2
@@ -141,6 +158,16 @@ the shear is simply lost. An affine matrix is exact for drawing, and Bevy's
 `GlobalTransform` does the same. The approximation moves to the places that
 write back a world pose (decisions 5 and 6), which is where Unity has it too.
 Rendering is never approximate.
+
+**The world-write rotation solves against the full matrix.** The first
+draft of decision 5 took the inverse of the parent's decomposed rotation
+times the requested rotation. glam reports any mirror on X and folds the rest
+into the rotation, so under a parent scaled `(-1, 1, 1)` that formula turned
+a child 90° about Y by a further 180° on a no-op write. The translate gizmo
+writes the pose every drag frame, so the child would spin. Solving
+`P⁻¹ · R · S_world · S_local⁻¹` uses the same decomposition on both sides,
+reduces to the first formula when nothing is scaled, and costs no extra
+hierarchy walk.
 
 **Scale is authored only locally.** A world-scale setter would have to invert a
 possibly sheared parent, and the result has no exact answer. Unity exposes
