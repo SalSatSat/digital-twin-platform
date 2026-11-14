@@ -12,8 +12,8 @@ import { rgbFromInt } from "./visual";
 class FakeEngine implements MeshManagerEngine {
   readonly events = new EventDispatcher();
   readonly entities = new Set<number>();
-  readonly positions = new Map<number, [number, number, number]>();
-  readonly rotations = new Map<number, [number, number, number, number]>();
+  /** World matrices, column-major, as get_world_matrix returns them. */
+  readonly matrices = new Map<number, number[]>();
   readonly visibility = new Map<number, boolean>();
   readonly componentQueries = vi.fn((_handle: number, _kind: string) => {});
   defaultMaterial: string | undefined = '{"base_color":[1,1,1]}';
@@ -59,12 +59,8 @@ class FakeEngine implements MeshManagerEngine {
     return JSON.stringify([...this.entities].map((handle) => ({ handle })));
   }
 
-  getPosition(handle: number): ArrayLike<number> | undefined {
-    return this.positions.get(handle);
-  }
-
-  getRotation(handle: number): ArrayLike<number> | undefined {
-    return this.rotations.get(handle);
+  getWorldMatrix(handle: number): ArrayLike<number> | undefined {
+    return this.matrices.get(handle);
   }
 
   getVisible(handle: number): boolean | undefined {
@@ -125,6 +121,37 @@ function spawnVisual(
 
 const standard = (mesh: THREE.Mesh) =>
   mesh.material as THREE.MeshStandardMaterial;
+
+/** A column-major world matrix, as the engine reports it. */
+function worldMatrix(
+  position: [number, number, number],
+  quaternion: [number, number, number, number] = [0, 0, 0, 1],
+  scale: [number, number, number] = [1, 1, 1],
+): number[] {
+  return new THREE.Matrix4()
+    .compose(
+      new THREE.Vector3(...position),
+      new THREE.Quaternion(...quaternion),
+      new THREE.Vector3(...scale),
+    )
+    .toArray();
+}
+
+/** What Three draws and raycasts from: the matrix after a scene update. */
+function drawnMatrix(
+  { scene, manager }: ReturnType<typeof setup>,
+  handle: number,
+): number[] {
+  scene.updateMatrixWorld();
+  return manager.getMesh(handle)!.matrixWorld.toArray();
+}
+
+function expectMatrixClose(actual: number[], expected: number[]): void {
+  expect(actual).toHaveLength(16);
+  actual.forEach((value, i) =>
+    expect(value, `element ${i}`).toBeCloseTo(expected[i], 5),
+  );
+}
 
 describe("buildGeometry", () => {
   it("builds a box with the given extents", () => {
@@ -439,18 +466,67 @@ describe("resync", () => {
 });
 
 describe("following the engine", () => {
-  it("copies position and rotation each update", () => {
+  it("draws from the engine's world matrix, including rotation and scale", () => {
     const fixture = setup();
     spawnVisual(fixture, 1, BOX);
-    fixture.engine.positions.set(1, [1, 2, 3]);
-    fixture.engine.rotations.set(1, [0, 0, Math.SQRT1_2, Math.SQRT1_2]);
+    const expected = worldMatrix(
+      [1, 2, 3],
+      [0, 0, Math.SQRT1_2, Math.SQRT1_2],
+      [2, 3, 4],
+    );
+    fixture.engine.matrices.set(1, expected);
 
     fixture.manager.update();
 
-    const mesh = fixture.manager.getMesh(1)!;
-    expect(mesh.position.toArray()).toEqual([1, 2, 3]);
-    expect(mesh.quaternion.z).toBeCloseTo(Math.SQRT1_2);
-    expect(mesh.quaternion.w).toBeCloseTo(Math.SQRT1_2);
+    expectMatrixClose(drawnMatrix(fixture, 1), expected);
+  });
+
+  it("draws a sheared matrix as given", () => {
+    // diag(2,1,1) * Rz(45): no position-rotation-scale triple can say this.
+    const fixture = setup();
+    spawnVisual(fixture, 1, BOX);
+    const h = Math.SQRT1_2;
+    const sheared = [2 * h, h, 0, 0, -2 * h, h, 0, 0, 0, 0, 1, 0, 5, 0, 0, 1];
+    fixture.engine.matrices.set(1, sheared);
+
+    fixture.manager.update();
+
+    expectMatrixClose(drawnMatrix(fixture, 1), sheared);
+  });
+
+  it("keeps a mirrored matrix mirrored (negative determinant)", () => {
+    const fixture = setup();
+    spawnVisual(fixture, 1, BOX);
+    fixture.engine.matrices.set(
+      1,
+      worldMatrix([0, 0, 0], undefined, [-1, 1, 1]),
+    );
+
+    fixture.manager.update();
+
+    fixture.scene.updateMatrixWorld();
+    expect(fixture.manager.getMesh(1)!.matrixWorld.determinant()).toBeCloseTo(
+      -1,
+    );
+  });
+
+  it("applies a matrix that changes after the first frame", () => {
+    // Guards the dirty flag: a visual that does not recompute its own matrix
+    // must still have its world matrix refreshed when the engine's changes.
+    // A Scene that recomposes its own matrix forces every child to refresh,
+    // which would hide a missing flag, so the scene here holds still.
+    const fixture = setup();
+    fixture.scene.matrixAutoUpdate = false;
+    spawnVisual(fixture, 1, BOX);
+    fixture.engine.matrices.set(1, worldMatrix([1, 0, 0]));
+    fixture.manager.update();
+    drawnMatrix(fixture, 1);
+
+    const next = worldMatrix([2, 0, 0], undefined, [3, 3, 3]);
+    fixture.engine.matrices.set(1, next);
+    fixture.manager.update();
+
+    expectMatrixClose(drawnMatrix(fixture, 1), next);
   });
 
   it("follows the engine's visibility", () => {
@@ -466,20 +542,32 @@ describe("following the engine", () => {
     expect(fixture.manager.getMesh(1)!.visible).toBe(true);
   });
 
-  it("puts a visual at a position now, and the next update does not undo it", () => {
+  it("puts a visual at a position now, keeping its rotation and scale, and the next update does not undo it", () => {
     const fixture = setup();
+    fixture.scene.matrixAutoUpdate = false; // as above: no forced refresh
     spawnVisual(fixture, 1, BOX);
-    fixture.engine.positions.set(1, [9, 1, 0]); // the engine's stale position
+    const rotation: [number, number, number, number] = [
+      0,
+      0,
+      Math.SQRT1_2,
+      Math.SQRT1_2,
+    ];
+    const scale: [number, number, number] = [2, 2, 2];
+    fixture.engine.matrices.set(1, worldMatrix([9, 1, 0], rotation, scale));
+    fixture.manager.update();
+    drawnMatrix(fixture, 1); // a frame drawn at the engine's (soon stale) spot
 
     fixture.manager.moveTo(1, -5, 1, 0);
     fixture.manager.update();
-    expect(fixture.manager.getMesh(1)!.position.toArray()).toEqual([-5, 1, 0]);
+    expectMatrixClose(
+      drawnMatrix(fixture, 1),
+      worldMatrix([-5, 1, 0], rotation, scale),
+    );
 
-    fixture.engine.positions.set(1, [-4.5, 1, 0]);
+    const next = worldMatrix([-4.5, 1, 0], rotation, scale);
+    fixture.engine.matrices.set(1, next);
     fixture.manager.update();
-    expect(fixture.manager.getMesh(1)!.position.toArray()).toEqual([
-      -4.5, 1, 0,
-    ]);
+    expectMatrixClose(drawnMatrix(fixture, 1), next);
   });
 
   it("ignores a move for an entity with no visual", () => {
@@ -496,8 +584,8 @@ describe("pick", () => {
     const fixture = setup();
     spawnVisual(fixture, 1, UNIT_BOX);
     spawnVisual(fixture, 2, UNIT_BOX);
-    fixture.engine.positions.set(1, [0, 0, 0]);
-    fixture.engine.positions.set(2, [0, 0, -3]);
+    fixture.engine.matrices.set(1, worldMatrix([0, 0, 0]));
+    fixture.engine.matrices.set(2, worldMatrix([0, 0, -3]));
     fixture.manager.update();
     fixture.scene.updateMatrixWorld(true);
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
@@ -525,6 +613,24 @@ describe("pick", () => {
     const { manager, camera } = pickFixture();
 
     expect(manager.pick(new THREE.Vector2(0.9, 0.9), camera)).toBeNull();
+  });
+
+  it("hits a visual by its scaled extent", () => {
+    // An orthographic camera maps NDC x = 0.3 to world x = 1.5. A unit cube
+    // spans x = +/-0.5, so only the 4x scale on X puts it under the ray.
+    const fixture = setup();
+    spawnVisual(fixture, 1, UNIT_BOX);
+    fixture.engine.matrices.set(
+      1,
+      worldMatrix([0, 0, 0], undefined, [4, 1, 1]),
+    );
+    fixture.manager.update();
+    fixture.scene.updateMatrixWorld();
+    const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 100);
+    camera.position.set(0, 0, 10);
+    camera.updateMatrixWorld(true);
+
+    expect(fixture.manager.pick(new THREE.Vector2(0.3, 0), camera)).toBe(1);
   });
 });
 

@@ -31,8 +31,7 @@ export interface MeshManagerEngine {
   getComponentJson(handle: number, kind: string): string | undefined;
   defaultComponentJson(kind: string): string | undefined;
   listEntityHierarchy(): string;
-  getPosition(handle: number): ArrayLike<number> | undefined;
-  getRotation(handle: number): ArrayLike<number> | undefined;
+  getWorldMatrix(handle: number): ArrayLike<number> | undefined;
   getVisible(handle: number): boolean | undefined;
 }
 
@@ -111,7 +110,7 @@ export class MeshManager {
 
   /**
    * Reconciles every entity marked dirty since the last call, then copies
-   * position, rotation and visibility from the engine onto each visual. Call
+   * the world matrix and visibility from the engine onto each visual. Call
    * it every frame, after the engine tick that dispatches the events.
    */
   update(): void {
@@ -155,7 +154,9 @@ export class MeshManager {
   moveTo(handle: number, x: number, y: number, z: number): void {
     const visual = this.visuals.get(handle);
     if (!visual) return;
-    visual.mesh.position.set(x, y, z);
+    // Only the translation: rotation, scale and shear stay as drawn.
+    visual.mesh.matrix.setPosition(x, y, z);
+    visual.mesh.matrixWorldNeedsUpdate = true;
     this.moved.add(handle);
   }
 
@@ -248,6 +249,9 @@ export class MeshManager {
           buildGeometry(action.shape),
           threeMaterial,
         );
+        // The engine's world matrix is the whole transform (ADR-039
+        // decision 4): never recompose it from position/quaternion/scale.
+        threeMesh.matrixAutoUpdate = false;
         this.scene.add(threeMesh);
         this.visuals.set(handle, {
           mesh: threeMesh,
@@ -285,16 +289,16 @@ export class MeshManager {
     this.visuals.delete(handle);
   }
 
-  /** Position, rotation and visibility change without events, so poll. */
+  /**
+   * World matrices and visibility change without events, so poll. With
+   * matrixAutoUpdate off, Three only refreshes matrixWorld when told to.
+   */
   private syncTransforms(): void {
     for (const [handle, { mesh }] of this.visuals) {
-      const position = this.engine.getPosition(handle);
-      if (position && !this.moved.has(handle)) {
-        mesh.position.set(position[0], position[1], position[2]);
-      }
-      const rotation = this.engine.getRotation(handle);
-      if (rotation) {
-        mesh.quaternion.set(rotation[0], rotation[1], rotation[2], rotation[3]);
+      const matrix = this.engine.getWorldMatrix(handle);
+      if (matrix && !this.moved.has(handle)) {
+        mesh.matrix.fromArray(matrix);
+        mesh.matrixWorldNeedsUpdate = true;
       }
       const visible = this.engine.getVisible(handle);
       if (visible !== undefined) {

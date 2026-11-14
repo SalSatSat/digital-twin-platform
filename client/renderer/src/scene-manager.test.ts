@@ -17,6 +17,7 @@ class FakeEngine {
   positions = new Map<number, [number, number, number]>();
   pending = new Map<number, [number, number, number]>();
   added: { handle: number; kind: string; json: string }[] = [];
+  scaled: { handle: number; scale: readonly number[] }[] = [];
   spawnCamera(name: string, x: number, y: number, z: number) {
     const h = this.next++;
     this.cameras.add(h);
@@ -65,6 +66,15 @@ class FakeEngine {
   getRotation(h: number) {
     return this.positions.has(h) ? new Float32Array([0, 0, 0, 1]) : undefined;
   }
+  getWorldMatrix(h: number) {
+    const p = this.positions.get(h);
+    return p
+      ? new Float32Array(new THREE.Matrix4().makeTranslation(...p).toArray())
+      : undefined;
+  }
+  setLocalScale(handle: number, scale: readonly [number, number, number]) {
+    this.scaled.push({ handle, scale: [...scale] });
+  }
   getVisible(h: number) {
     return this.positions.has(h) ? true : undefined;
   }
@@ -99,6 +109,12 @@ function setup() {
 }
 const meshes = (scene: THREE.Scene) =>
   scene.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+
+/** Where Three draws a mesh: its world matrix's translation. */
+function drawnPosition(scene: THREE.Scene, mesh: THREE.Mesh): number[] {
+  scene.updateMatrixWorld();
+  return new THREE.Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray();
+}
 
 describe("SceneManager and components", () => {
   it("adds Mesh then Material for each demo cube, as wire JSON", () => {
@@ -148,16 +164,16 @@ describe("SceneManager and components", () => {
       (m) =>
         (m.material as THREE.MeshStandardMaterial).color.getHex() === 0x4f9eed,
     )!;
-    expect(meshA.position.toArray()).toEqual([-3, 1.5, 0]);
+    expect(drawnPosition(scene, meshA)).toEqual([-3, 1.5, 0]);
 
     engine.positions.set(cubeA, [4, 1.5, 0]); // past the boundary at x = 3
     sm.update(0.016, 3, -5, true);
-    expect(meshA.position.toArray()).toEqual([-5, 1.5, 0]); // moved now
+    expect(drawnPosition(scene, meshA)).toEqual([-5, 1.5, 0]); // moved now
     expect(engine.pending.get(cubeA)).toEqual([-5, 1.5, 0]); // engine told
 
     engine.tick(); // the engine reports the respawn position
     sm.update(0.016, 3, -5, true);
-    expect(meshA.position.toArray()).toEqual([-5, 1.5, 0]);
+    expect(drawnPosition(scene, meshA)).toEqual([-5, 1.5, 0]);
     expect(scene.children.filter((c) => c instanceof THREE.Mesh)).toHaveLength(
       4,
     );
@@ -192,5 +208,37 @@ describe("SceneManager and components", () => {
     ]);
     sm.update(0.016, 100, -5, false);
     expect(meshes(scene)).toHaveLength(0);
+  });
+
+  it("applies a definition's scale through setLocalScale after the spawn, and only when given", () => {
+    const { engine, sm } = setup();
+    sm.loadScene({
+      name: "Scaled",
+      cameras: [],
+      lights: [],
+      dynamicEntities: [
+        {
+          name: "Mover",
+          position: { x: 0, y: 0, z: 0 },
+          scale: { x: -1, y: 2, z: 0.5 },
+          velocity: { x: 1, y: 0, z: 0 },
+        },
+      ],
+      staticEntities: [
+        {
+          name: "Big",
+          position: { x: 1, y: 0, z: 0 },
+          scale: { x: 2, y: 3, z: 4 },
+        },
+        { name: "Plain", position: { x: 2, y: 0, z: 0 } },
+      ],
+    });
+
+    const handleOf = (name: string) =>
+      [...engine.names].find(([, n]) => n === name)![0];
+    expect(engine.scaled).toEqual([
+      { handle: handleOf("Mover"), scale: [-1, 2, 0.5] },
+      { handle: handleOf("Big"), scale: [2, 3, 4] },
+    ]);
   });
 });

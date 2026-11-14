@@ -180,6 +180,7 @@ export class SceneManager {
         entityDef.velocity.y,
         entityDef.velocity.z,
       );
+      this.applyScale(handle, entityDef.scale);
       this.applyComponents(handle, entityDef.components);
       this.spawnedEntities.push({ handle, name });
     }
@@ -193,6 +194,7 @@ export class SceneManager {
         entityDef.position.y,
         entityDef.position.z,
       );
+      this.applyScale(handle, entityDef.scale);
       this.applyComponents(handle, entityDef.components);
       this.spawnedEntities.push({ handle, name });
     }
@@ -203,6 +205,20 @@ export class SceneManager {
         `${this.spawnedLights.length} lights, ` +
         `${this.spawnedEntities.length} entities`,
     );
+  }
+
+  /**
+   * Writes an entity's definition-time scale, if it has one (ADR-039
+   * decision 11). Through setLocalScale, not `components`: LocalTransform is
+   * mandatory, so addComponentJson would reject it. An invalid scale throws,
+   * for the same reason a rejected component does.
+   */
+  private applyScale(
+    handle: number,
+    scale: { x: number; y: number; z: number } | undefined,
+  ): void {
+    if (scale === undefined) return;
+    this.engine.setLocalScale(handle, [scale.x, scale.y, scale.z]);
   }
 
   /**

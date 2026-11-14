@@ -37,6 +37,8 @@ export interface CameraDefinition {
 export interface DynamicEntityDefinition {
   name: string;
   position: { x: number; y: number; z: number };
+  /** Local scale, applied after the spawn; omitted means 1 on every axis (ADR-039). */
+  scale?: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
   /** Optional components to add after the spawn, such as Mesh and Material. */
   components?: EntityComponents;
@@ -44,11 +46,13 @@ export interface DynamicEntityDefinition {
 
 /**
  * Describes a static entity to spawn in the scene.
- * Static entities have position only.
+ * Static entities have no velocity.
  */
 export interface StaticEntityDefinition {
   name: string;
   position: { x: number; y: number; z: number };
+  /** Local scale, applied after the spawn; omitted means 1 on every axis (ADR-039). */
+  scale?: { x: number; y: number; z: number };
   /** Optional components to add after the spawn, such as Mesh and Material. */
   components?: EntityComponents;
 }

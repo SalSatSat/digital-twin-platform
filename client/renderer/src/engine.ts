@@ -150,6 +150,28 @@ export class Engine {
   }
 
   /**
+   * Returns an entity's world matrix as 16 floats in column-major order,
+   * the order THREE.Matrix4.fromArray reads (ADR-039 decision 4). It
+   * carries scale, and the shear a rotated child picks up under a
+   * non-uniformly scaled parent, which getPosition/getRotation cannot.
+   * Returns undefined if the handle is invalid or the entity has no
+   * WorldTransform. Updates on the next tick, like getPosition.
+   */
+  getWorldMatrix(handle: number): Float32Array | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_world_matrix(handle) ?? undefined;
+  }
+
+  /**
+   * Returns an entity's local scale [x, y, z], or undefined if the handle
+   * is invalid or the entity has no LocalTransform.
+   */
+  getLocalScale(handle: number): Float32Array | undefined {
+    this.assertInitialized();
+    return this.engineWorld!.get_local_scale(handle) ?? undefined;
+  }
+
+  /**
    * Returns whether an entity is currently visible. Returns undefined
    * if the handle is invalid or the entity has despawned.
    */
@@ -254,9 +276,11 @@ export class Engine {
    * Idempotent: setting a child's parent to its current parent is a
    * no-op that succeeds without side effects.
    *
-   * Throws HierarchyError if either handle is invalid, or if the
+   * Throws HierarchyError if either handle is invalid, if the
    * operation would create a cycle (parentHandle is childHandle
-   * itself, or a descendant of childHandle).
+   * itself, or a descendant of childHandle), or, with
+   * worldPositionStays, if the new parent's world transform is
+   * degenerate (nothing is changed).
    *
    * worldPositionStays (default true, as in Unity's Transform.SetParent):
    * when true, childHandle's local transform is rewritten so its world
@@ -286,6 +310,10 @@ export class Engine {
         throw new HierarchyError(
           `setParent failed: would create a cycle (child=${childHandle}, parent=${parentHandle})`,
         );
+      case 3:
+        throw new HierarchyError(
+          `setParent failed: the new parent's world transform is degenerate (child=${childHandle}, parent=${parentHandle})`,
+        );
       default:
         throw new HierarchyError(
           `setParent failed: unknown status code ${status}`,
@@ -297,7 +325,9 @@ export class Engine {
    * Removes childHandle's parent, making it a root entity.
    * No-op if already a root.
    *
-   * Throws HierarchyError if childHandle is invalid.
+   * Throws HierarchyError if childHandle is invalid or, with
+   * worldPositionStays, if its world transform is degenerate (nothing
+   * is changed).
    *
    * worldPositionStays works as in setParent (default true).
    */
@@ -313,6 +343,10 @@ export class Engine {
       case 1:
         throw new HierarchyError(
           `removeParent failed: entity not found (child=${childHandle})`,
+        );
+      case 3:
+        throw new HierarchyError(
+          `removeParent failed: the entity's world transform is degenerate (child=${childHandle})`,
         );
       default:
         throw new HierarchyError(
@@ -330,8 +364,11 @@ export class Engine {
    *
    * position is [x, y, z]; rotation is a quaternion [x, y, z, w].
    *
-   * Throws HierarchyError if the handle is invalid, and Error if the
-   * pose is malformed (non-finite value or zero-length quaternion).
+   * The entity's local scale is kept (ADR-039 decision 5).
+   *
+   * Throws HierarchyError if the handle is invalid or an ancestor's world
+   * transform is degenerate, and Error if the pose is malformed (non-finite
+   * value or zero-length quaternion).
    */
   setWorldTransform(
     handle: number,
@@ -354,9 +391,49 @@ export class Engine {
         throw new Error(
           `setWorldTransform failed: malformed pose (handle=${handle})`,
         );
+      case 3:
+        throw new HierarchyError(
+          `setWorldTransform failed: an ancestor's world transform is degenerate (handle=${handle})`,
+        );
       default:
         throw new HierarchyError(
           `setWorldTransform failed: unknown status code ${status}`,
+        );
+    }
+  }
+
+  /**
+   * Sets an entity's local scale [x, y, z], leaving its position and
+   * rotation untouched (ADR-039 decision 7). Each axis must be finite and
+   * non-zero; a negative axis mirrors. The world matrix updates on the next
+   * tick.
+   *
+   * Throws HierarchyError if the handle is invalid, and Error if the scale
+   * is malformed or invalid, as setWorldTransform does for its pose.
+   */
+  setLocalScale(
+    handle: number,
+    scale: readonly [number, number, number],
+  ): void {
+    this.assertInitialized();
+    const status = this.engineWorld!.set_local_scale(
+      handle,
+      new Float32Array(scale),
+    );
+    switch (status) {
+      case 0:
+        return;
+      case 1:
+        throw new HierarchyError(
+          `setLocalScale failed: entity not found (handle=${handle})`,
+        );
+      case 2:
+        throw new Error(
+          `setLocalScale failed: each axis must be a finite, non-zero number (handle=${handle}, scale=[${scale.join(", ")}])`,
+        );
+      default:
+        throw new HierarchyError(
+          `setLocalScale failed: unknown status code ${status}`,
         );
     }
   }
