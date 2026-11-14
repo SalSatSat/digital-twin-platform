@@ -20,6 +20,8 @@ interface EngineViewProps {
    * whole selection). Pass a new array only when the selection changes.
    */
   gizmoTargets: readonly number[];
+  /** The selection's primary entity; it orients the scale handles. */
+  gizmoPrimary: number | null;
 }
 
 /**
@@ -34,6 +36,7 @@ export function EngineView({
   editMode,
   onEntityPicked,
   gizmoTargets,
+  gizmoPrimary,
 }: EngineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // The view gizmo's own small canvas — a separate THREE.WebGPURenderer,
@@ -102,8 +105,8 @@ export function EngineView({
   }, [editMode]);
 
   useEffect(() => {
-    rendererRef.current?.setGizmoTargets(gizmoTargets);
-  }, [gizmoTargets]);
+    rendererRef.current?.setGizmoTargets(gizmoTargets, gizmoPrimary);
+  }, [gizmoTargets, gizmoPrimary]);
 
   return (
     <>

@@ -119,6 +119,7 @@ function App() {
           editMode={isEditMode}
           onEntityPicked={handleViewportPick}
           gizmoTargets={selection.handles}
+          gizmoPrimary={selection.primary}
         />
       </div>
       {isEditMode && (

@@ -51,8 +51,9 @@ export class Renderer {
   private gizmo: ViewGizmo;
   private transformGizmo: TransformGizmo;
   // ECS handles the transform gizmo acts on (edit mode only), fed from
-  // the editor's whole selection via setGizmoTargets.
+  // the editor's whole selection via setGizmoTargets, and its primary.
   private gizmoTargetHandles: readonly number[] = [];
+  private gizmoPrimary: number | null = null;
 
   // Fallback camera used before a scene is loaded
   private fallbackCamera: THREE.PerspectiveCamera;
@@ -238,10 +239,12 @@ export class Renderer {
 
   /**
    * Sets the entities the transform gizmo acts on (the editor's
-   * selection). Only takes effect in edit mode.
+   * selection) and the selection's primary entity, which orients the
+   * scale handles (ADR-039). Only takes effect in edit mode.
    */
-  setGizmoTargets(handles: readonly number[]): void {
+  setGizmoTargets(handles: readonly number[], primary: number | null): void {
     this.gizmoTargetHandles = handles;
+    this.gizmoPrimary = primary;
   }
 
   private onPickMouseDown = (event: MouseEvent): void => {
@@ -300,8 +303,8 @@ export class Renderer {
   };
 
   /**
-   * W / E switch the transform gizmo to translate / rotate (Unity's
-   * keys). Returns true if the key was consumed. Bare keys only, so
+   * W / E / R switch the transform gizmo to translate / rotate / scale
+   * (Unity's keys). Returns true if the key was consumed. Bare keys only, so
    * browser shortcuts like Ctrl+W are never intercepted, and not while
    * the right mouse button is held, when WASD flies the camera.
    */
@@ -322,6 +325,9 @@ export class Renderer {
         return true;
       case "e":
         this.transformGizmo.setMode("rotate");
+        return true;
+      case "r":
+        this.transformGizmo.setMode("scale");
         return true;
       default:
         return false;
@@ -382,6 +388,7 @@ export class Renderer {
     this.transformGizmo.update(
       activeCamera,
       this.editMode ? this.gizmoTargetHandles : NO_GIZMO_TARGETS,
+      this.editMode ? this.gizmoPrimary : null,
     );
 
     this.backend.render(this.threeScene, activeCamera);
