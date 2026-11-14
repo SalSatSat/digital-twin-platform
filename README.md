@@ -271,16 +271,20 @@ _To be determined_
 
 | Phase    | Description                                                                                                                            | Depends On |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Phase 20d | GLB model loading at runtime — render-backend spike, `Model { key }` mesh variant, asset cache and key resolver, async-safe attach, disposal, recursive picking, and `Material` reworked into `MeshRenderer` material slots; defers glTF-node entities, animation/skinning, Draco/KTX2 and client publish | Phase 20c |
-| Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20d) so the technique is chosen once | Phase 17, Phase 20d |
-| Phase 22 | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 26)                                            | Phase 13   |
-| Phase 23 | Backend foundations — PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton                      | Phase 20d  |
+| Phase 20d | GLB model loading at runtime — render-backend spike (also benchmarks `WebGLRenderer`, `WebGPURenderer` and `WebGPURenderer` with `forceWebGL` from 100 to 20k meshes, tries TSL-only materials, and checks a mirrored box on both WebGL paths; the result is recorded in ADR-041), `Model { key }` mesh variant, asset cache and key resolver, async-safe attach, disposal, recursive picking, and `Material` reworked into `MeshRenderer` material slots; defers glTF-node entities, animation/skinning, Draco/KTX2 and client publish | Phase 20c |
+| Phase 20e | Debug metrics — FPS, entity count, render stats (ungated initially; role-gated in Phase 26), so Phase 20f can be measured | Phase 13 |
+| Phase 20f | Engine frame path — an ordered system Scheduler; boundary respawn moved into the engine as a `BoundaryRespawn` component and system (removes `respawn.ts` and `MeshManager.moveTo`); one per-tick batch of changed world transforms, copied like `drain_events`, replacing per-visual polling; visibility through `EntityInfo` events (ADR-042) | Phase 20d, Phase 20e |
+| Phase 20g | Commands and undo — one `Command` type in `engine/core` for every authoring mutation, referring to entities by stable id; inverse-based undo/redo with transactions (one step per gizmo drag); simulation and view state (Scene Camera navigation, active camera) stay out of the history (ADR-043) | Phase 20f |
+| Phase 21 | Selection Outline Rendering — Unity-style outline highlight on the selected entity/entities in the viewport; deferred until real model geometry exists (Phase 20d) so the technique is chosen once, on the render pipeline ADR-041 settles | Phase 17, Phase 20d |
+| Phase 22 | Twin data I — the plugin model at its minimum (open component registry with namespaced kinds, one registration entry point per plugin on the engine and client sides; ADR-045); IFC as the first plugin, via IFClite in a Web Worker (`GlobalId` as a component, geometry as GLB through the Phase 20d asset cache, an import as one command); a site origin and `f64` georeference in the core, with `f32` site-local transforms (ADR-044) | Phase 20g |
+| Phase 23 | Backend foundations — server language decided first (ADR-046: one Rust server linking `engine/core`, replacing the Go skeletons), PostgreSQL + migrations, Protobuf codegen pipeline (`shared/proto/`), `server/api` skeleton | Phase 20d |
 | Phase 24 | Auth & Users — user table, password/session handling, login/logout                                                                     | Phase 23   |
 | Phase 25 | Organizations & Projects — organization concept, projects owned by an organization                                                     | Phase 24   |
-| Phase 26 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 22's debug metrics                   | Phase 25   |
-| Phase 27 | Scene Persistence — save/load `SceneDefinition` against a project                                                                      | Phase 25   |
-| Phase 28 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, eventually consistent (not concurrent multi-user editing) | Phase 27   |
+| Phase 26 | Sharing & Permissions — invites, roles (viewer/admin/developer); retrofits role-gating onto Phase 20e's debug metrics                   | Phase 25   |
+| Phase 27 | Scene Persistence — save/load `SceneDefinition` against a project, validated on the server with the engine's reflection rules; components of plugins a project does not enable are kept as opaque data (ADR-045) | Phase 25 |
+| Phase 28 | Real-Time Sync (v1) — WebSocket live-update notifications via `server/sync`, relaying Phase 20g commands, eventually consistent (not concurrent multi-user editing) | Phase 27 |
 | Phase 29 | Editor Panel Tabs — Project/Console-style panel tabs (Unity-inspired); deferred from Phase 14 pending further design (tab content, panel placement). Tentatively expects Event Bus for Console-style log content and GLB loading for Project-style asset content — to be confirmed once actually scoped | Phase 19, Phase 20d |
+| Phase 30 | Twin data II — one live sensor value end to end: a source on the server, delivered over the Phase 28 channel, bound to an entity and shown in the viewport and Inspector | Phase 28, Phase 22 |
 
 **Not yet scheduled**
 
@@ -290,5 +294,9 @@ deliberately not given a phase number. Phase 28 ships an eventually-consistent
 model (changes are visible to other users on next sync, not live). Whether
 true concurrent editing is ever needed will be reassessed after Phase 28
 ships, based on how the platform is actually used with real teams.
+
+AI agent access over MCP is also not yet given a phase. It would drive the
+Phase 20g command API with the same permissions as a user, so it waits for
+Phase 20g and Phase 26.
 
 > This roadmap is a living document. New phases may be added as requirements evolve.
