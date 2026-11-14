@@ -101,9 +101,9 @@ mod tests {
 
         // ASSERT — world transform matches local transform for root
         let wt = world.get_component::<WorldTransform>(entity).unwrap();
-        assert_relative_eq!(wt.position.x, 1.0, epsilon = 1e-6);
-        assert_relative_eq!(wt.position.y, 2.0, epsilon = 1e-6);
-        assert_relative_eq!(wt.position.z, 3.0, epsilon = 1e-6);
+        assert_relative_eq!(wt.position().x, 1.0, epsilon = 1e-6);
+        assert_relative_eq!(wt.position().y, 2.0, epsilon = 1e-6);
+        assert_relative_eq!(wt.position().z, 3.0, epsilon = 1e-6);
     }
 
     #[test]
@@ -134,9 +134,9 @@ mod tests {
 
         // ASSERT — child world position is parent (5,0,0) + local (1,0,0) = (6,0,0)
         let child_wt = world.get_component::<WorldTransform>(child).unwrap();
-        assert_relative_eq!(child_wt.position.x, 6.0, epsilon = 1e-6);
-        assert_relative_eq!(child_wt.position.y, 0.0, epsilon = 1e-6);
-        assert_relative_eq!(child_wt.position.z, 0.0, epsilon = 1e-6);
+        assert_relative_eq!(child_wt.position().x, 6.0, epsilon = 1e-6);
+        assert_relative_eq!(child_wt.position().y, 0.0, epsilon = 1e-6);
+        assert_relative_eq!(child_wt.position().z, 0.0, epsilon = 1e-6);
     }
 
     #[test]
@@ -178,7 +178,7 @@ mod tests {
 
         // ASSERT — child world position = 10 + 5 + 1 = 16
         let child_wt = world.get_component::<WorldTransform>(child).unwrap();
-        assert_relative_eq!(child_wt.position.x, 16.0, epsilon = 1e-6);
+        assert_relative_eq!(child_wt.position().x, 16.0, epsilon = 1e-6);
     }
 
     #[test]
@@ -195,7 +195,38 @@ mod tests {
         // ASSERT
         let local = world.get_component::<LocalTransform>(entity).unwrap();
         let world_t = world.get_component::<WorldTransform>(entity).unwrap();
-        assert_eq!(local.position, world_t.position);
-        assert_eq!(local.rotation, world_t.rotation);
+        assert_eq!(local.position, world_t.position());
+        assert_eq!(local.rotation, world_t.rotation());
+    }
+
+    #[test]
+    fn hierarchy_system_applies_parent_scale_to_child_position_and_scale() {
+        // ARRANGE -- parent at (5,0,0) scaled 2; child at local (1,0,0)
+        // scaled (1,3,1)
+        let mut world = World::new();
+        let mut system = HierarchySystem::new();
+        let parent =
+            world.spawn_bundle(StaticObjectBundle::new("Parent", Vec3::new(5.0, 0.0, 0.0)));
+        world
+            .get_component_mut::<LocalTransform>(parent)
+            .unwrap()
+            .scale = Vec3::splat(2.0);
+        let child = world.spawn_bundle(StaticObjectBundle::new("Child", Vec3::new(1.0, 0.0, 0.0)));
+        world
+            .get_component_mut::<LocalTransform>(child)
+            .unwrap()
+            .scale = Vec3::new(1.0, 3.0, 1.0);
+        world.set_parent(child, parent).unwrap();
+
+        // ACT
+        system.run(&mut world, 0.0);
+
+        // ASSERT -- 5 + 2 * 1 = 7; scales multiply
+        let child_wt = world.get_component::<WorldTransform>(child).unwrap();
+        assert_relative_eq!(child_wt.position().x, 7.0, epsilon = 1e-6);
+        let scale = child_wt.lossy_scale();
+        assert_relative_eq!(scale.x, 2.0, epsilon = 1e-5);
+        assert_relative_eq!(scale.y, 6.0, epsilon = 1e-5);
+        assert_relative_eq!(scale.z, 2.0, epsilon = 1e-5);
     }
 }

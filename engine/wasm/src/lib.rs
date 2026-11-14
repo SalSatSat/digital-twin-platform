@@ -201,6 +201,8 @@ impl EngineWorld {
     ///   0 = success
     ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
     ///   2 = would create a cycle (child is parent, or an ancestor of parent)
+    ///   3 = degenerate transform (world_position_stays only: the new
+    ///       parent's world matrix is singular; nothing is changed)
     ///
     /// Idempotent: setting a child's parent to its current parent returns 0.
     ///
@@ -253,6 +255,7 @@ impl EngineWorld {
             }
             Err(HierarchyError::EntityNotFound) => 1,
             Err(HierarchyError::WouldCreateCycle) => 2,
+            Err(HierarchyError::DegenerateTransform) => 3,
         }
     }
     /// Removes `child`'s parent by handle, making it a root entity.
@@ -262,6 +265,9 @@ impl EngineWorld {
     /// Returns a status code:
     ///   0 = success (including if the entity was already a root — no-op)
     ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
+    ///   3 = degenerate transform (world_position_stays only: the child's
+    ///       world matrix is singular; nothing is changed). 2 is unused, so
+    ///       each HierarchyError variant has one code across all methods.
     pub fn remove_parent(&mut self, child_handle: u32, world_position_stays: bool) -> u8 {
         let Some(child) = self.resolve_handle(child_handle) else {
             return 1;
@@ -289,7 +295,8 @@ impl EngineWorld {
                 0
             }
             Err(HierarchyError::EntityNotFound) => 1,
-            // remove_parent's Rust API only has one error variant, but match
+            Err(HierarchyError::DegenerateTransform) => 3,
+            // remove_parent cannot produce a cycle, but match
             // exhaustively rather than `_ => 1` so this breaks loudly at
             // compile time if HierarchyError ever grows a new variant.
             Err(HierarchyError::WouldCreateCycle) => {
@@ -310,6 +317,10 @@ impl EngineWorld {
     ///   0 = success
     ///   1 = entity not found (invalid handle, despawned, or missing HierarchyNode)
     ///   2 = malformed pose (wrong length, non-finite value, or zero-length quaternion)
+    ///   3 = degenerate transform (an ancestor's world matrix is singular;
+    ///       nothing is written)
+    ///
+    /// The local scale is kept (ADR-039 decision 5).
     ///
     /// The cached WorldTransform (what get_position reads) updates on the
     /// next tick.
@@ -333,6 +344,7 @@ impl EngineWorld {
                 0
             }
             Err(HierarchyError::EntityNotFound) => 1,
+            Err(HierarchyError::DegenerateTransform) => 3,
             Err(HierarchyError::WouldCreateCycle) => {
                 unreachable!("set_world_transform cannot produce WouldCreateCycle")
             }
@@ -362,12 +374,12 @@ impl EngineWorld {
             .entity_handles
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())?;
-        let transform = self.world.get_component::<WorldTransform>(*entity).ok()?;
-        Some(vec![
-            transform.position.x,
-            transform.position.y,
-            transform.position.z,
-        ])
+        let position = self
+            .world
+            .get_component::<WorldTransform>(*entity)
+            .ok()?
+            .position();
+        Some(vec![position.x, position.y, position.z])
     }
     /// Returns the rotation of an entity as a flat quaternion [x, y, z, w].
     /// Returns None if the handle is invalid, despawned, or has no WorldTransform.
@@ -380,13 +392,12 @@ impl EngineWorld {
             .entity_handles
             .get(handle as usize)
             .and_then(|slot| slot.as_ref())?;
-        let transform = self.world.get_component::<WorldTransform>(*entity).ok()?;
-        Some(vec![
-            transform.rotation.x,
-            transform.rotation.y,
-            transform.rotation.z,
-            transform.rotation.w,
-        ])
+        let rotation = self
+            .world
+            .get_component::<WorldTransform>(*entity)
+            .ok()?
+            .rotation();
+        Some(vec![rotation.x, rotation.y, rotation.z, rotation.w])
     }
     /// Returns whether an entity is currently visible.
     /// Returns None if the handle is invalid or despawned.

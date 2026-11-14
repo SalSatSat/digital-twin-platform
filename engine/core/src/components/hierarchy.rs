@@ -1,7 +1,9 @@
 use hecs::Entity;
 
-/// Errors that can occur when modifying entity relationships in the
-/// scene hierarchy via `World::set_parent()` or `World::remove_parent()`.
+/// Errors that can occur when modifying entity relationships or world
+/// poses in the scene hierarchy (`World::set_parent()`,
+/// `World::remove_parent()`, `World::set_world_transform()` and their
+/// keep-world variants).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HierarchyError {
     /// The child entity, or the target parent entity, does not exist
@@ -13,6 +15,11 @@ pub enum HierarchyError {
     /// its own descendants. Cycles would cause infinite recursion
     /// in HierarchySystem's depth-first propagation.
     WouldCreateCycle,
+
+    /// The write would produce a non-finite LocalTransform, because an
+    /// ancestor's world matrix is singular (for example, scales that
+    /// underflow to zero). Rejected rather than written (ADR-039).
+    DegenerateTransform,
 }
 
 /// Hierarchy component — defines an entity's position in the scene tree.
