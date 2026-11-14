@@ -399,6 +399,71 @@ impl EngineWorld {
             .rotation();
         Some(vec![rotation.x, rotation.y, rotation.z, rotation.w])
     }
+    /// Returns an entity's world matrix as 16 floats in column-major order,
+    /// the order `THREE.Matrix4.fromArray` reads (ADR-039 decision 4).
+    /// Returns None if the handle is invalid, despawned, or has no
+    /// WorldTransform.
+    ///
+    /// The renderer draws from this: it carries scale and the shear a
+    /// rotated child picks up under a non-uniformly scaled parent, which a
+    /// position and a quaternion cannot. Like get_position, it reads the
+    /// cached WorldTransform, which updates on the next tick.
+    pub fn get_world_matrix(&self, handle: u32) -> Option<Vec<f32>> {
+        let entity = self.resolve_handle(handle)?;
+        let world = self.world.get_component::<WorldTransform>(entity).ok()?;
+        Some(glam::Mat4::from(world.affine()).to_cols_array().to_vec())
+    }
+    /// Returns an entity's local scale as [x, y, z].
+    /// Returns None if the handle is invalid, despawned, or has no
+    /// LocalTransform.
+    pub fn get_local_scale(&self, handle: u32) -> Option<Vec<f32>> {
+        let entity = self.resolve_handle(handle)?;
+        let scale = self
+            .world
+            .get_component::<LocalTransform>(entity)
+            .ok()?
+            .scale;
+        Some(vec![scale.x, scale.y, scale.z])
+    }
+    /// Sets an entity's local scale by handle, leaving its position and
+    /// rotation untouched (ADR-039 decision 7). The scale gizmo uses this
+    /// instead of a full LocalTransform write, which would round-trip the
+    /// rotation through Euler degrees on every drag frame.
+    ///
+    /// scale: [x, y, z]. Each axis must be finite and non-zero; negative
+    /// axes mirror.
+    ///
+    /// Returns a status code:
+    ///   0 = success
+    ///   1 = entity not found (invalid handle, despawned, or no LocalTransform)
+    ///   2 = malformed or invalid scale (wrong length, non-finite, or zero)
+    ///
+    /// Records ComponentChanged(LocalTransform) on success, as
+    /// set_world_transform does.
+    pub fn set_local_scale(&mut self, handle: u32, scale: &[f32]) -> u8 {
+        let &[x, y, z] = scale else {
+            return 2;
+        };
+        let scale = Vec3::new(x, y, z);
+        if reflection::validate_scale(scale).is_err() {
+            return 2;
+        }
+        let Some(entity) = self.resolve_handle(handle) else {
+            return 1;
+        };
+        let written = match self.world.get_component_mut::<LocalTransform>(entity) {
+            Ok(mut transform) => {
+                transform.scale = scale;
+                true
+            }
+            Err(_) => false,
+        };
+        if !written {
+            return 1;
+        }
+        self.record_component_changed(handle, ComponentKind::LocalTransform);
+        0
+    }
     /// Returns whether an entity is currently visible.
     /// Returns None if the handle is invalid or despawned.
     pub fn get_visible(&self, handle: u32) -> Option<bool> {
@@ -931,7 +996,8 @@ mod tests {
         // reflection.rs's own rotation round-trip test makes.
         let json = serde_json::json!({
             "position": [0.0, 0.0, 0.0],
-            "rotation_euler_deg": [0.0, 90.0, 0.0]
+            "rotation_euler_deg": [0.0, 90.0, 0.0],
+            "scale": [1.0, 1.0, 1.0]
         });
         let rejection = world.set_component_json(handle, "LocalTransform", &json.to_string());
         assert!(rejection.is_none(), "write should succeed: {:?}", rejection);
@@ -1807,5 +1873,238 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed[0]["contexts"], serde_json::json!(["Editor"]));
+    }
+
+    // -- transform scale (ADR-039) ---------------------------------------------
+
+    /// Scales the entity behind `handle` directly in the ECS, bypassing
+    /// set_local_scale, so tests of other methods don't depend on it.
+    fn set_scale_directly(world: &mut EngineWorld, handle: u32, scale: Vec3) {
+        let entity = world.resolve_handle(handle).unwrap();
+        world
+            .world
+            .get_component_mut::<LocalTransform>(entity)
+            .unwrap()
+            .scale = scale;
+    }
+
+    /// Spawns a grandparent and parent each scaled 1e-30 on X (their
+    /// product underflows to a singular matrix) and returns the parent's
+    /// handle.
+    fn spawn_singular_parent(world: &mut EngineWorld) -> u32 {
+        let tiny = Vec3::new(1e-30, 1.0, 1.0);
+        let grandparent = world.spawn_static_object("Grandparent", 0.0, 0.0, 0.0);
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        set_scale_directly(world, grandparent, tiny);
+        set_scale_directly(world, parent, tiny);
+        assert_eq!(world.set_parent(parent, grandparent, false), 0);
+        parent
+    }
+
+    #[test]
+    fn get_world_matrix_is_column_major_with_translation_last() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 1.0, 2.0, 3.0);
+        set_scale_directly(&mut world, handle, Vec3::new(2.0, 3.0, 4.0));
+        world.tick(0.0);
+
+        let matrix = world.get_world_matrix(handle).expect("entity has a matrix");
+
+        #[rustfmt::skip]
+        let expected = [
+            2.0, 0.0, 0.0, 0.0,
+            0.0, 3.0, 0.0, 0.0,
+            0.0, 0.0, 4.0, 0.0,
+            1.0, 2.0, 3.0, 1.0,
+        ];
+        assert_eq!(matrix, expected);
+    }
+
+    #[test]
+    fn get_world_matrix_carries_shear_from_a_non_uniform_parent() {
+        // Parent stretched 2x on X; child turned 45 degrees about Z. The
+        // first two columns are not orthogonal: x.y = -1.5.
+        let mut world = EngineWorld::new();
+        let parent = world.spawn_static_object("Parent", 0.0, 0.0, 0.0);
+        let child = world.spawn_static_object("Child", 0.0, 0.0, 0.0);
+        set_scale_directly(&mut world, parent, Vec3::new(2.0, 1.0, 1.0));
+        let child_entity = world.resolve_handle(child).unwrap();
+        world
+            .world
+            .get_component_mut::<LocalTransform>(child_entity)
+            .unwrap()
+            .rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_4);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        world.tick(0.0);
+
+        let m = world.get_world_matrix(child).expect("entity has a matrix");
+
+        let x = Vec3::new(m[0], m[1], m[2]);
+        let y = Vec3::new(m[4], m[5], m[6]);
+        assert!((x.dot(y) + 1.5).abs() < 1e-5, "x={x:?} y={y:?}");
+    }
+
+    #[test]
+    fn get_world_matrix_returns_none_for_invalid_or_despawned_handle() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.despawn_entity(handle);
+
+        assert!(world.get_world_matrix(handle).is_none());
+        assert!(world.get_world_matrix(999).is_none());
+    }
+
+    #[test]
+    fn set_local_scale_writes_scale_only_and_records_component_changed() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 1.0, 2.0, 3.0);
+        let entity = world.resolve_handle(handle).unwrap();
+        let rotation = Quat::from_rotation_y(0.7);
+        world
+            .world
+            .get_component_mut::<LocalTransform>(entity)
+            .unwrap()
+            .rotation = rotation;
+        world.drain_events();
+
+        let status = world.set_local_scale(handle, &[2.0, -1.0, 0.5]);
+
+        assert_eq!(status, 0);
+        assert_eq!(world.get_local_scale(handle), Some(vec![2.0, -1.0, 0.5]));
+        let local = world.world.get_component::<LocalTransform>(entity).unwrap();
+        assert_eq!(local.position, Vec3::new(1.0, 2.0, 3.0));
+        assert_eq!(local.rotation, rotation);
+        drop(local);
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::LocalTransform).to_vec()
+        );
+    }
+
+    #[test]
+    fn set_local_scale_rejects_malformed_or_invalid_scale_and_records_nothing() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        set_scale_directly(&mut world, handle, Vec3::new(2.0, 3.0, 4.0));
+        world.drain_events();
+
+        let rejected: [&[f32]; 7] = [
+            &[],
+            &[1.0, 1.0],
+            &[1.0, 1.0, 1.0, 1.0],
+            &[0.0, 1.0, 1.0],
+            &[1.0, -0.0, 1.0],
+            &[1.0, f32::NAN, 1.0],
+            &[1.0, 1.0, f32::INFINITY],
+        ];
+        for scale in rejected {
+            assert_eq!(world.set_local_scale(handle, scale), 2, "{scale:?}");
+        }
+
+        assert_eq!(world.get_local_scale(handle), Some(vec![2.0, 3.0, 4.0]));
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn set_local_scale_returns_not_found_for_invalid_handle_and_records_nothing() {
+        let mut world = EngineWorld::new();
+        world.drain_events();
+
+        assert_eq!(world.set_local_scale(999, &[1.0, 1.0, 1.0]), 1);
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn get_local_scale_returns_none_for_invalid_or_despawned_handle() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        world.despawn_entity(handle);
+
+        assert!(world.get_local_scale(handle).is_none());
+        assert!(world.get_local_scale(999).is_none());
+    }
+
+    #[test]
+    fn set_local_scale_then_tick_scales_the_world_matrix() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+
+        assert_eq!(world.set_local_scale(handle, &[2.0, 3.0, 4.0]), 0);
+        world.tick(0.0);
+
+        let m = world.get_world_matrix(handle).expect("entity has a matrix");
+        assert_eq!([m[0], m[5], m[10]], [2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn set_component_json_writes_local_transform_scale_and_rejects_zero_naming_the_axis() {
+        let mut world = EngineWorld::new();
+        let handle = world.spawn_static_object("Cube", 0.0, 0.0, 0.0);
+        let json = |scale: [f32; 3]| {
+            serde_json::json!({
+                "position": [0.0, 0.0, 0.0],
+                "rotation_euler_deg": [0.0, 0.0, 0.0],
+                "scale": scale
+            })
+            .to_string()
+        };
+        world.drain_events();
+
+        let accepted = world.set_component_json(handle, "LocalTransform", &json([2.0, -1.0, 0.5]));
+        let rejected = world.set_component_json(handle, "LocalTransform", &json([1.0, 0.0, 1.0]));
+
+        assert!(accepted.is_none(), "{accepted:?}");
+        assert_eq!(
+            rejected.as_deref(),
+            Some("LocalTransform scale.y must be a finite, non-zero number (got 0)")
+        );
+        assert_eq!(world.get_local_scale(handle), Some(vec![2.0, -1.0, 0.5]));
+        // One change for the accepted write; nothing for the rejected one.
+        assert_eq!(
+            world.drain_events(),
+            component_changed(handle, ComponentKind::LocalTransform).to_vec()
+        );
+    }
+
+    #[test]
+    fn set_world_transform_returns_3_for_degenerate_ancestor_and_records_nothing() {
+        let mut world = EngineWorld::new();
+        let parent = spawn_singular_parent(&mut world);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        world.drain_events();
+
+        let status = world.set_world_transform(child, &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+
+        assert_eq!(status, 3);
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn set_parent_with_world_position_stays_returns_3_for_degenerate_parent_and_records_nothing() {
+        let mut world = EngineWorld::new();
+        let parent = spawn_singular_parent(&mut world);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        world.drain_events();
+
+        let status = world.set_parent(child, parent, true);
+
+        assert_eq!(status, 3);
+        assert!(world.drain_events().is_empty());
+    }
+
+    #[test]
+    fn remove_parent_with_world_position_stays_returns_3_for_degenerate_world_and_records_nothing()
+    {
+        let mut world = EngineWorld::new();
+        let parent = spawn_singular_parent(&mut world);
+        let child = world.spawn_static_object("Child", 1.0, 0.0, 0.0);
+        assert_eq!(world.set_parent(child, parent, false), 0);
+        world.drain_events();
+
+        let status = world.remove_parent(child, true);
+
+        assert_eq!(status, 3);
+        assert!(world.drain_events().is_empty());
     }
 }

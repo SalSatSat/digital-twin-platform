@@ -439,10 +439,14 @@ fn velocity_default_json() -> Result<serde_json::Value, ReflectError> {
 /// limit). Chosen for Inspector editability; storage stays
 /// quaternion-based to avoid gimbal lock and drift during runtime
 /// composition. See ADR-035.
+///
+/// `scale` is required, like every other field (ADR-039 decision 8). Each
+/// axis must be finite and non-zero; negative axes mirror.
 #[derive(Serialize, Deserialize)]
 struct LocalTransformView {
     position: Vec3,
     rotation_euler_deg: [f32; 3],
+    scale: Vec3,
 }
 
 fn local_transform_has(world: &World, entity: Entity) -> bool {
@@ -461,6 +465,7 @@ fn local_transform_to_json(
     let view = LocalTransformView {
         position: transform.position,
         rotation_euler_deg: [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()],
+        scale: transform.scale,
     };
     serde_json::to_value(&view).map_err(|e| ReflectError::DeserializationFailed(e.to_string()))
 }
@@ -475,6 +480,9 @@ fn local_transform_from_json(
     }
     let view: LocalTransformView = serde_json::from_value(json)
         .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    validate_finite("position", view.position.to_array())?;
+    validate_finite("rotation_euler_deg", view.rotation_euler_deg)?;
+    validate_scale(view.scale)?;
     let [pitch, yaw, roll] = view.rotation_euler_deg;
     let rotation = Quat::from_euler(
         EulerRot::YXZ,
@@ -487,6 +495,37 @@ fn local_transform_from_json(
         .map_err(|_| ReflectError::ComponentNotPresent)?;
     transform.position = view.position;
     transform.rotation = rotation;
+    transform.scale = view.scale;
+    Ok(())
+}
+
+/// Every axis of a LocalTransform `field` must be finite. JSON like `1e39`
+/// reaches here as infinity once narrowed to f32, and a non-finite local
+/// transform poisons the world matrix of the entity and its descendants.
+fn validate_finite(field: &str, values: [f32; 3]) -> Result<(), ReflectError> {
+    for (axis, value) in ["x", "y", "z"].into_iter().zip(values) {
+        if !value.is_finite() {
+            return Err(ReflectError::ValidationFailed(format!(
+                "LocalTransform {field}.{axis} must be a finite number (got {value})"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Every axis of a LocalTransform scale must be finite and non-zero
+/// (ADR-039 decision 2). Negative axes are allowed: they mirror. The check
+/// is explicit because `inf != 0` is true, and JSON like `1e39` reaches
+/// here as infinity once narrowed to f32. Shared with
+/// `EngineWorld::set_local_scale`.
+pub(crate) fn validate_scale(scale: Vec3) -> Result<(), ReflectError> {
+    for (axis, value) in [("x", scale.x), ("y", scale.y), ("z", scale.z)] {
+        if !value.is_finite() || value == 0.0 {
+            return Err(ReflectError::ValidationFailed(format!(
+                "LocalTransform scale.{axis} must be a finite, non-zero number (got {value})"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -908,7 +947,8 @@ mod tests {
         // without floating-point tolerance headaches.
         let json = serde_json::json!({
             "position": [0.0, 0.0, 0.0],
-            "rotation_euler_deg": [0.0, 90.0, 0.0]
+            "rotation_euler_deg": [0.0, 90.0, 0.0],
+            "scale": [1.0, 1.0, 1.0]
         });
         local_transform_from_json(&mut world, entity, json).unwrap();
 
@@ -928,7 +968,8 @@ mod tests {
     fn set_euler_deg(world: &mut World, entity: Entity, euler: [f32; 3]) {
         let json = serde_json::json!({
             "position": [0.0, 0.0, 0.0],
-            "rotation_euler_deg": euler
+            "rotation_euler_deg": euler,
+            "scale": [1.0, 1.0, 1.0]
         });
         local_transform_from_json(world, entity, json).unwrap();
     }
@@ -1768,6 +1809,140 @@ mod tests {
                 let read = (descriptor.to_json)(&world, entity).unwrap();
                 assert_eq!(read, variant.default, "{label} read back");
             }
+        }
+    }
+
+    // -- LocalTransform scale (ADR-039) ----------------------------------------
+
+    fn local_transform_json(scale: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "position": [1.0, 2.0, 3.0],
+            "rotation_euler_deg": [0.0, 90.0, 0.0],
+            "scale": scale
+        })
+    }
+
+    #[test]
+    fn local_transform_round_trips_scale_through_json() {
+        let mut world = World::new();
+        let entity = spawn_with_local_transform(&mut world);
+
+        local_transform_from_json(
+            &mut world,
+            entity,
+            local_transform_json(serde_json::json!([2.0, 3.0, 0.5])),
+        )
+        .unwrap();
+
+        let stored = world.get_component::<LocalTransform>(entity).unwrap().scale;
+        assert_eq!(stored, Vec3::new(2.0, 3.0, 0.5));
+        let json = local_transform_to_json(&world, entity).unwrap();
+        assert_eq!(json["scale"], serde_json::json!([2.0, 3.0, 0.5]));
+    }
+
+    #[test]
+    fn local_transform_from_json_accepts_negative_scale() {
+        let mut world = World::new();
+        let entity = spawn_with_local_transform(&mut world);
+
+        let result = local_transform_from_json(
+            &mut world,
+            entity,
+            local_transform_json(serde_json::json!([-1.0, 1.0, 1.0])),
+        );
+
+        assert!(result.is_ok(), "{result:?}");
+        let stored = world.get_component::<LocalTransform>(entity).unwrap().scale;
+        assert_eq!(stored, Vec3::new(-1.0, 1.0, 1.0));
+    }
+
+    #[test]
+    fn local_transform_from_json_requires_scale_and_changes_nothing() {
+        let mut world = World::new();
+        let entity = spawn_with_local_transform(&mut world);
+        let before = *world.get_component::<LocalTransform>(entity).unwrap();
+        let json = serde_json::json!({
+            "position": [1.0, 2.0, 3.0],
+            "rotation_euler_deg": [0.0, 90.0, 0.0]
+        });
+
+        let result = local_transform_from_json(&mut world, entity, json);
+
+        assert!(
+            matches!(result, Err(ReflectError::DeserializationFailed(ref m)) if m.contains("scale"))
+        );
+        assert_eq!(
+            *world.get_component::<LocalTransform>(entity).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn local_transform_from_json_rejects_zero_and_non_finite_scale_naming_the_axis() {
+        // 1e39 is valid JSON but overflows f32, so it arrives as infinity.
+        let cases = [
+            (
+                serde_json::json!([0.0, 1.0, 1.0]),
+                "LocalTransform scale.x must be a finite, non-zero number (got 0)",
+            ),
+            (
+                serde_json::json!([1.0, -0.0, 1.0]),
+                "LocalTransform scale.y must be a finite, non-zero number (got -0)",
+            ),
+            (
+                serde_json::json!([1.0, 1.0, 1e39]),
+                "LocalTransform scale.z must be a finite, non-zero number (got inf)",
+            ),
+        ];
+        for (scale, expected) in cases {
+            let mut world = World::new();
+            let entity = spawn_with_local_transform(&mut world);
+            let before = *world.get_component::<LocalTransform>(entity).unwrap();
+
+            let result = local_transform_from_json(&mut world, entity, local_transform_json(scale));
+
+            match result {
+                Err(ReflectError::ValidationFailed(message)) => assert_eq!(message, expected),
+                other => panic!("expected ValidationFailed({expected:?}), got {other:?}"),
+            }
+            // Rejected whole: position and rotation are not half-applied.
+            assert_eq!(
+                *world.get_component::<LocalTransform>(entity).unwrap(),
+                before
+            );
+        }
+    }
+
+    #[test]
+    fn local_transform_from_json_rejects_non_finite_position_and_rotation_naming_the_field() {
+        // 1e39 overflows f32 and arrives as infinity. Before 20c these were
+        // stored, making the entity's world matrix (and its children's)
+        // non-finite.
+        let cases = [
+            (
+                serde_json::json!({"position": [1e39, 0.0, 0.0], "rotation_euler_deg": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}),
+                "LocalTransform position.x must be a finite number (got inf)",
+            ),
+            (
+                serde_json::json!({"position": [0.0, 0.0, 0.0], "rotation_euler_deg": [0.0, -1e39, 0.0], "scale": [1.0, 1.0, 1.0]}),
+                "LocalTransform rotation_euler_deg.y must be a finite number (got -inf)",
+            ),
+        ];
+        for (json, expected) in cases {
+            let mut world = World::new();
+            let entity = spawn_with_local_transform(&mut world);
+            let before = *world.get_component::<LocalTransform>(entity).unwrap();
+
+            let result = local_transform_from_json(&mut world, entity, json);
+
+            match result {
+                Err(ReflectError::ValidationFailed(message)) => assert_eq!(message, expected),
+                other => panic!("expected ValidationFailed({expected:?}), got {other:?}"),
+            }
+            assert_eq!(
+                *world.get_component::<LocalTransform>(entity).unwrap(),
+                before
+            );
         }
     }
 }
