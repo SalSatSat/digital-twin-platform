@@ -85,9 +85,8 @@ const changed = (
   component: "Mesh" | "Material",
 ): EngineEvent => ({ kind: "componentChanged", handle, component });
 
-const BOX = { shape: { Box: { size: [2, 3, 4] } } };
-const SPHERE = { shape: { Sphere: { radius: 0.5 } } };
-const UNIT_BOX = { shape: { Box: { size: [1, 1, 1] } } };
+const BOX = { shape: { Box: {} } };
+const SPHERE = { shape: { Sphere: {} } };
 
 /** A Material the way the engine reports it: sRGB floats, stored as f32. */
 const material = (hex: number) => ({
@@ -154,26 +153,40 @@ function expectMatrixClose(actual: number[], expected: number[]): void {
 }
 
 describe("buildGeometry", () => {
-  it("builds a box with the given extents", () => {
-    const geometry = buildGeometry({ Box: { size: [2, 3, 4] } });
+  /** The geometry's extent on each axis, from its bounding box. */
+  function extent(geometry: THREE.BufferGeometry): [number, number, number] {
+    geometry.computeBoundingBox();
+    const size = geometry.boundingBox!.getSize(new THREE.Vector3());
+    return [size.x, size.y, size.z];
+  }
+
+  function expectExtent(
+    geometry: THREE.BufferGeometry,
+    expected: [number, number, number],
+  ): void {
+    extent(geometry).forEach((value, axis) =>
+      expect(value, `axis ${axis}`).toBeCloseTo(expected[axis], 5),
+    );
+  }
+
+  // Unity's primitive sizes (ADR-039 decision 10); the entity's scale does
+  // the rest.
+  it("builds a cube of side 1", () => {
+    const geometry = buildGeometry({ Box: {} });
 
     expect(geometry).toBeInstanceOf(THREE.BoxGeometry);
-    expect((geometry as THREE.BoxGeometry).parameters).toMatchObject({
-      width: 2,
-      height: 3,
-      depth: 4,
-    });
+    expectExtent(geometry, [1, 1, 1]);
   });
 
-  it("builds a sphere with the given radius", () => {
-    const geometry = buildGeometry({ Sphere: { radius: 0.5 } });
+  it("builds a sphere of diameter 1", () => {
+    const geometry = buildGeometry({ Sphere: {} });
 
     expect(geometry).toBeInstanceOf(THREE.SphereGeometry);
     expect((geometry as THREE.SphereGeometry).parameters.radius).toBe(0.5);
   });
 
-  it("builds a cylinder along Y with the given radius and height", () => {
-    const geometry = buildGeometry({ Cylinder: { radius: 0.5, height: 2 } });
+  it("builds a cylinder of diameter 1 and height 2 along Y", () => {
+    const geometry = buildGeometry({ Cylinder: {} });
 
     expect(geometry).toBeInstanceOf(THREE.CylinderGeometry);
     expect((geometry as THREE.CylinderGeometry).parameters).toMatchObject({
@@ -183,14 +196,10 @@ describe("buildGeometry", () => {
     });
   });
 
-  it("builds a plane in the XZ plane facing +Y", () => {
-    const geometry = buildGeometry({ Plane: { size: [10, 4] } });
+  it("builds a 10 by 10 plane in the XZ plane facing +Y", () => {
+    const geometry = buildGeometry({ Plane: {} });
 
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox!;
-    expect(box.max.x - box.min.x).toBeCloseTo(10);
-    expect(box.max.z - box.min.z).toBeCloseTo(4);
-    expect(box.max.y - box.min.y).toBeCloseTo(0);
+    expectExtent(geometry, [10, 0, 10]);
     const normal = geometry.attributes.normal as THREE.BufferAttribute;
     expect(normal.getY(0)).toBeCloseTo(1);
   });
@@ -233,7 +242,7 @@ describe("creating visuals", () => {
     (hex) => {
       const fixture = setup();
 
-      spawnVisual(fixture, 1, UNIT_BOX, material(hex));
+      spawnVisual(fixture, 1, BOX, material(hex));
 
       const drawn = standard(fixture.manager.getMesh(1)!).color;
       const before = new THREE.Color(hex);
@@ -257,7 +266,7 @@ describe("creating visuals", () => {
   it("keeps a plane single-sided, so it is drawn and picked from +Y only", () => {
     const fixture = setup();
 
-    spawnVisual(fixture, 1, { shape: { Plane: { size: [10, 10] } } });
+    spawnVisual(fixture, 1, { shape: { Plane: {} } });
 
     expect(standard(fixture.manager.getMesh(1)!).side).toBe(THREE.FrontSide);
   });
@@ -365,7 +374,7 @@ describe("changing visuals", () => {
     fixture.manager.update();
     expect(fixture.manager.getMesh(1)).toBeNull();
 
-    fixture.engine.setComponent(1, "Mesh", UNIT_BOX);
+    fixture.engine.setComponent(1, "Mesh", BOX);
     fixture.engine.emit(added(1, "Mesh"));
     fixture.manager.update();
 
@@ -454,7 +463,7 @@ describe("resync", () => {
 
     // While events were lost: entity 3 went away and entity 2 arrived.
     fixture.engine.despawn(3);
-    fixture.engine.setComponent(2, "Mesh", UNIT_BOX);
+    fixture.engine.setComponent(2, "Mesh", BOX);
     fixture.engine.emit({ kind: "resync" });
     fixture.manager.update();
 
@@ -582,8 +591,8 @@ describe("pick", () => {
   /** A camera at z = 10 looking down -Z, and two unit cubes in front of it. */
   function pickFixture() {
     const fixture = setup();
-    spawnVisual(fixture, 1, UNIT_BOX);
-    spawnVisual(fixture, 2, UNIT_BOX);
+    spawnVisual(fixture, 1, BOX);
+    spawnVisual(fixture, 2, BOX);
     fixture.engine.matrices.set(1, worldMatrix([0, 0, 0]));
     fixture.engine.matrices.set(2, worldMatrix([0, 0, -3]));
     fixture.manager.update();
@@ -619,7 +628,7 @@ describe("pick", () => {
     // An orthographic camera maps NDC x = 0.3 to world x = 1.5. A unit cube
     // spans x = +/-0.5, so only the 4x scale on X puts it under the ray.
     const fixture = setup();
-    spawnVisual(fixture, 1, UNIT_BOX);
+    spawnVisual(fixture, 1, BOX);
     fixture.engine.matrices.set(
       1,
       worldMatrix([0, 0, 0], undefined, [4, 1, 1]),

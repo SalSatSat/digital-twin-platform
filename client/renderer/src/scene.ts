@@ -84,13 +84,16 @@ export interface SceneDefinition {
   staticEntities: StaticEntityDefinition[];
 }
 
-/** The edge length of the demo cubes, which used to be fixed in the renderer. */
-const CUBE_SIZE = 0.8;
+/**
+ * The demo cubes' scale. They were boxes of size 0.8 before primitives lost
+ * their parameters (ADR-039); scaling a unit Box keeps their look.
+ */
+const CUBE_SCALE = { x: 0.8, y: 0.8, z: 0.8 };
 
-/** A demo cube: a box of CUBE_SIZE in the given 0xrrggbb colour. */
+/** A demo cube's components: a unit Box in the given 0xrrggbb colour. */
 function cube(color: number): EntityComponents {
   return {
-    Mesh: { shape: { Box: { size: [CUBE_SIZE, CUBE_SIZE, CUBE_SIZE] } } },
+    Mesh: { shape: { Box: {} } },
     Material: { base_color: rgbFromInt(color) },
   };
 }
@@ -142,18 +145,21 @@ export const DEFAULT_SCENE: SceneDefinition = {
     {
       name: "Cube A",
       position: { x: -3.0, y: 1.5, z: 0.0 },
+      scale: CUBE_SCALE,
       velocity: { x: 1.0, y: 0.0, z: 0.0 },
       components: cube(0x4f9eed),
     },
     {
       name: "Cube B",
       position: { x: -3.0, y: 0.0, z: 0.0 },
+      scale: CUBE_SCALE,
       velocity: { x: 1.5, y: 0.0, z: 0.0 },
       components: cube(0x48bb78),
     },
     {
       name: "Cube C",
       position: { x: -3.0, y: -1.5, z: 0.0 },
+      scale: CUBE_SCALE,
       velocity: { x: 0.8, y: 0.0, z: 0.0 },
       components: cube(0xf6ad55),
     },
@@ -163,6 +169,7 @@ export const DEFAULT_SCENE: SceneDefinition = {
     {
       name: "Cube D",
       position: { x: -3.0, y: 3.0, z: 0.0 },
+      scale: CUBE_SCALE,
       components: cube(0xffffff),
     },
   ],

@@ -12,8 +12,7 @@ export type {
   ComponentVariantInfo,
   ComponentVariantsEngine,
 } from "./component-variants";
-export { meshVariantName, shapeFields, withShapeField } from "./mesh-edit";
-export type { ShapeField } from "./mesh-edit";
+export { meshVariantName } from "./mesh-edit";
 export { hexToRgb, rgbToHex } from "./visual";
 export type { MaterialJson, MeshJson, MeshShapeJson, Rgb } from "./visual";
 export {

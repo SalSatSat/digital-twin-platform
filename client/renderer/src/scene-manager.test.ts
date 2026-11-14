@@ -123,13 +123,24 @@ describe("SceneManager and components", () => {
     const kinds = engine.added.map((a) => a.kind);
     expect(kinds).toEqual(Array(4).fill(["Mesh", "Material"]).flat());
     const first = engine.added[0];
-    expect(JSON.parse(first.json)).toEqual({
-      shape: { Box: { size: [0.8, 0.8, 0.8] } },
-    });
+    expect(JSON.parse(first.json)).toEqual({ shape: { Box: {} } });
     const mat = JSON.parse(engine.added[1].json);
     expect(mat.base_color.map((c: number) => Math.round(c * 255))).toEqual([
       0x4f, 0x9e, 0xed,
     ]);
+  });
+
+  it("keeps the demo cubes at 0.8 by scaling each one, as the old Box size did", () => {
+    const { engine, sm } = setup();
+    sm.loadScene(DEFAULT_SCENE);
+
+    const cubes = [...engine.names]
+      .filter(([, name]) => name.startsWith("Cube "))
+      .map(([handle]) => handle);
+    expect(cubes).toHaveLength(4);
+    expect(engine.scaled).toEqual(
+      cubes.map((handle) => ({ handle, scale: [0.8, 0.8, 0.8] })),
+    );
   });
 
   it("draws the four cubes with the old colours after one tick and update", () => {
@@ -147,10 +158,8 @@ describe("SceneManager and components", () => {
       [0x4f9eed, 0x48bb78, 0xf6ad55, 0xffffff].sort(),
     );
     for (const m of drawn) {
-      expect((m.geometry as THREE.BoxGeometry).parameters.width).toBeCloseTo(
-        0.8,
-        6,
-      );
+      // A unit Box: the 0.8 now comes from each cube's scale (next test).
+      expect((m.geometry as THREE.BoxGeometry).parameters.width).toBe(1);
     }
   });
 
@@ -202,7 +211,7 @@ describe("SceneManager and components", () => {
     sm.unloadScene();
     expect(meshes(scene)).toHaveLength(0);
     sm.dispose();
-    engine.components.set("99:Mesh", '{"shape":{"Sphere":{"radius":1}}}');
+    engine.components.set("99:Mesh", '{"shape":{"Sphere":{}}}');
     engine.events.dispatch([
       { kind: "componentAdded", handle: 99, component: "Mesh" },
     ]);

@@ -5,10 +5,10 @@ import {
   type ComponentVariantsEngine,
 } from "./component-variants";
 
-const BOX = { name: "Box", default: { shape: { Box: { size: [1, 1, 1] } } } };
+const BOX = { name: "Box", default: { shape: { Box: {} } } };
 const SPHERE = {
   name: "Sphere",
-  default: { shape: { Sphere: { radius: 0.5 } } },
+  default: { shape: { Sphere: {} } },
 };
 
 /** The engine's variant listing, as the wasm export returns it. */

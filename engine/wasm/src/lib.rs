@@ -1162,7 +1162,7 @@ mod tests {
     }
 
     const VELOCITY_ONE_X: &str = r#"{"value":[1.0,0.0,0.0]}"#;
-    const MESH_UNIT_BOX: &str = r#"{"shape":{"Box":{"size":[1.0,1.0,1.0]}}}"#;
+    const MESH_UNIT_BOX: &str = r#"{"shape":{"Box":{}}}"#;
     const MATERIAL_WHITE: &str = r#"{"base_color":[1.0,1.0,1.0]}"#;
 
     fn variants_json(kind: &str) -> Option<serde_json::Value> {
@@ -1191,13 +1191,10 @@ mod tests {
         assert_eq!(
             variants,
             serde_json::json!([
-                { "name": "Box", "default": { "shape": { "Box": { "size": [1.0, 1.0, 1.0] } } } },
-                { "name": "Sphere", "default": { "shape": { "Sphere": { "radius": 0.5 } } } },
-                {
-                    "name": "Cylinder",
-                    "default": { "shape": { "Cylinder": { "radius": 0.5, "height": 2.0 } } }
-                },
-                { "name": "Plane", "default": { "shape": { "Plane": { "size": [10.0, 10.0] } } } },
+                { "name": "Box", "default": { "shape": { "Box": {} } } },
+                { "name": "Sphere", "default": { "shape": { "Sphere": {} } } },
+                { "name": "Cylinder", "default": { "shape": { "Cylinder": {} } } },
+                { "name": "Plane", "default": { "shape": { "Plane": {} } } },
             ])
         );
     }
@@ -1285,8 +1282,7 @@ mod tests {
         );
         world.drain_events();
 
-        let mesh =
-            world.set_component_json(handle, "Mesh", r#"{"shape":{"Sphere":{"radius":2.0}}}"#);
+        let mesh = world.set_component_json(handle, "Mesh", r#"{"shape":{"Sphere":{}}}"#);
         assert!(mesh.is_none(), "{mesh:?}");
         assert_eq!(
             world.drain_events(),
@@ -1318,7 +1314,8 @@ mod tests {
                 .is_none()
         );
         world.drain_events();
-        let bad_mesh = r#"{"shape":{"Sphere":{"radius":0.0}}}"#;
+        // A pre-20c payload: "radius" is an unknown field now (ADR-039).
+        let bad_mesh = r#"{"shape":{"Sphere":{"radius":0.5}}}"#;
         let bad_material = r#"{"base_color":[0.0,2.0,0.0]}"#;
 
         // Set path (the component is present) and add path (it is not).

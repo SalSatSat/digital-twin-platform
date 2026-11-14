@@ -14,13 +14,20 @@ export type Rgb = [number, number, number];
 /**
  * Wire shape of `Mesh`. Mirrors `MeshShape` in
  * engine/core/src/components/mesh.rs. Kept in sync by hand, like the camera
- * types; the engine validates the values, so this layer checks structure only.
+ * types. Primitives have no parameters (ADR-039 decision 10): each variant's
+ * body is an empty object, and the entity's scale sizes it.
  */
 export type MeshShapeJson =
-  | { Box: { size: [number, number, number] } }
-  | { Sphere: { radius: number } }
-  | { Cylinder: { radius: number; height: number } }
-  | { Plane: { size: [number, number] } };
+  | { Box: EmptyShape }
+  | { Sphere: EmptyShape }
+  | { Cylinder: EmptyShape }
+  | { Plane: EmptyShape };
+
+/** The body of a parameter-free primitive: `{}`. */
+export type EmptyShape = Record<string, never>;
+
+/** The primitives this renderer can draw, in the engine's variant order. */
+const PRIMITIVES = ["Box", "Sphere", "Cylinder", "Plane"] as const;
 
 export interface MeshJson {
   shape: MeshShapeJson;
@@ -97,34 +104,22 @@ function numberTuple<N extends 2 | 3>(
   return [...value] as never;
 }
 
-/** Exactly one known variant with well-formed numbers, or null. */
+/**
+ * Exactly one known primitive with an empty body, or null. A body with
+ * fields (a pre-20c size) is refused, as the engine refuses it, rather than
+ * drawn at the wrong size.
+ */
 function parseShape(raw: unknown): MeshShapeJson | null {
   if (!isRecord(raw)) return null;
   const variants = Object.keys(raw);
   if (variants.length !== 1) return null;
   const variant = variants[0];
   const body = raw[variant];
-  if (!isRecord(body)) return null;
-  switch (variant) {
-    case "Box": {
-      const size = numberTuple(body.size, 3);
-      return size === null ? null : { Box: { size } };
-    }
-    case "Sphere":
-      return isFiniteNumber(body.radius)
-        ? { Sphere: { radius: body.radius } }
-        : null;
-    case "Cylinder":
-      return isFiniteNumber(body.radius) && isFiniteNumber(body.height)
-        ? { Cylinder: { radius: body.radius, height: body.height } }
-        : null;
-    case "Plane": {
-      const size = numberTuple(body.size, 2);
-      return size === null ? null : { Plane: { size } };
-    }
-    default:
-      return null;
-  }
+  if (!isRecord(body) || Object.keys(body).length !== 0) return null;
+  const primitive = PRIMITIVES.find((name) => name === variant);
+  return primitive === undefined
+    ? null
+    : ({ [primitive]: {} } as MeshShapeJson);
 }
 
 /**
@@ -193,14 +188,9 @@ export function planVisualUpdate(
   };
 }
 
-/** Equal for equal variants and numbers, whatever the property order. */
+/** Primitives have no parameters, so a shape is equal to another by variant. */
 function shapeSignature(shape: MeshShapeJson): string {
-  if ("Box" in shape) return `Box ${shape.Box.size.join(" ")}`;
-  if ("Sphere" in shape) return `Sphere ${shape.Sphere.radius}`;
-  if ("Cylinder" in shape) {
-    return `Cylinder ${shape.Cylinder.radius} ${shape.Cylinder.height}`;
-  }
-  return `Plane ${shape.Plane.size.join(" ")}`;
+  return Object.keys(shape)[0] ?? "";
 }
 
 function colorsEqual(a: Readonly<Rgb>, b: Readonly<Rgb>): boolean {

@@ -36,32 +36,27 @@ export interface MeshManagerEngine {
 }
 
 /**
- * The Three.js geometry for a `Mesh` shape. A Plane lies in the local XZ
- * plane facing +Y, as the component documents; its material is single-sided.
+ * The Three.js geometry for a `Mesh` shape, at Unity's primitive sizes
+ * (ADR-039 decision 10): a cube of side 1, a sphere of diameter 1, a
+ * cylinder of diameter 1 and height 2 along Y, and a 10 by 10 plane in the
+ * local XZ plane facing +Y, whose material is single-sided. The entity's
+ * world matrix scales them.
  */
 export function buildGeometry(shape: MeshShapeJson): THREE.BufferGeometry {
   if ("Box" in shape) {
-    const [x, y, z] = shape.Box.size;
-    return new THREE.BoxGeometry(x, y, z);
+    return new THREE.BoxGeometry(1, 1, 1);
   }
   if ("Sphere" in shape) {
     return new THREE.SphereGeometry(
-      shape.Sphere.radius,
+      0.5,
       SPHERE_WIDTH_SEGMENTS,
       SPHERE_HEIGHT_SEGMENTS,
     );
   }
   if ("Cylinder" in shape) {
-    const { radius, height } = shape.Cylinder;
-    return new THREE.CylinderGeometry(
-      radius,
-      radius,
-      height,
-      CYLINDER_RADIAL_SEGMENTS,
-    );
+    return new THREE.CylinderGeometry(0.5, 0.5, 2, CYLINDER_RADIAL_SEGMENTS);
   }
-  const [x, z] = shape.Plane.size;
-  const geometry = new THREE.PlaneGeometry(x, z);
+  const geometry = new THREE.PlaneGeometry(10, 10);
   // PlaneGeometry faces +Z; the component says +Y.
   geometry.rotateX(-Math.PI / 2);
   return geometry;

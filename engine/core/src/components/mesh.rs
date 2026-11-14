@@ -1,67 +1,32 @@
-use glam::{Vec2, Vec3};
-
 /// The geometry a [`Mesh`] draws.
 ///
-/// Every dimension is in world units and every shape is centred on the
-/// entity's origin. The engine has no transform scale, so a primitive's size
-/// lives here. Serialized as an externally tagged enum, the same
-/// representation as `ProjectionType`, so a model variant can be added later
-/// without changing the wire format (ADR-038).
+/// Primitives have no parameters (ADR-039 decision 10). Each has a fixed
+/// size in local units, centred on the entity's origin, and the entity's
+/// transform scale sizes it, as in Unity:
+/// - `Box`: a cube of side 1;
+/// - `Sphere`: diameter 1;
+/// - `Cylinder`: diameter 1 and height 2, its axis along local Y;
+/// - `Plane`: 10 by 10 in the local XZ plane, single-sided, facing +Y.
 ///
-/// Dimensions must be finite and greater than zero. That is checked where
-/// JSON enters the engine (reflection), not by these types.
+/// The renderer owns the geometry; these sizes are its contract.
+///
+/// Serialized as an externally tagged enum of empty struct variants, so the
+/// wire form is `{"Box":{}}`: the object form a variant with fields (Phase
+/// 20d's `Model { key }`) needs, without changing the format again.
+///
+/// Unknown fields are denied, so a pre-20c `{"Box":{"size":[..]}}` is
+/// rejected naming `size` instead of being drawn at the wrong size.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum MeshShape {
-    /// A box.
-    Box {
-        /// Extents along local X, Y and Z.
-        size: Vec3,
-    },
-    /// A sphere.
-    Sphere {
-        /// Distance from the origin to the surface.
-        radius: f32,
-    },
-    /// A cylinder whose axis runs along local Y.
-    Cylinder {
-        /// Radius of the circular cross-section.
-        radius: f32,
-        /// Extent along local Y.
-        height: f32,
-    },
-    /// A single-sided plane in the local XZ plane, facing +Y.
-    Plane {
-        /// Extents along local X and Z.
-        size: Vec2,
-    },
-}
-
-impl MeshShape {
-    /// A unit cube: one world unit on every axis.
-    pub fn default_box() -> Self {
-        Self::Box { size: Vec3::ONE }
-    }
-
-    /// A sphere with a diameter of one world unit (radius 0.5).
-    pub fn default_sphere() -> Self {
-        Self::Sphere { radius: 0.5 }
-    }
-
-    /// A cylinder with a diameter of one world unit and a height of two
-    /// (radius 0.5, height 2.0).
-    pub fn default_cylinder() -> Self {
-        Self::Cylinder {
-            radius: 0.5,
-            height: 2.0,
-        }
-    }
-
-    /// A plane of 10 by 10 world units.
-    pub fn default_plane() -> Self {
-        Self::Plane {
-            size: Vec2::new(10.0, 10.0),
-        }
-    }
+    /// A cube of side 1.
+    Box {},
+    /// A sphere of diameter 1.
+    Sphere {},
+    /// A cylinder of diameter 1 and height 2 along local Y.
+    Cylinder {},
+    /// A 10 by 10 single-sided plane in local XZ, facing +Y.
+    Plane {},
 }
 
 /// Mesh component — the geometry an entity is drawn with.
@@ -82,9 +47,9 @@ impl Mesh {
 }
 
 impl Default for Mesh {
-    /// Creates a Mesh with a unit cube.
+    /// Creates a Mesh with a Box.
     fn default() -> Self {
-        Self::new(MeshShape::default_box())
+        Self::new(MeshShape::Box {})
     }
 }
 
@@ -93,67 +58,87 @@ impl Default for Mesh {
 mod tests {
     use super::*;
 
-    #[test]
-    fn mesh_shape_default_box_is_a_unit_cube() {
-        // ARRANGE + ACT
-        let shape = MeshShape::default_box();
-
-        // ASSERT — one world unit on every axis, like Unity's cube
-        assert_eq!(shape, MeshShape::Box { size: Vec3::ONE });
-    }
-
-    #[test]
-    fn mesh_shape_default_sphere_has_a_diameter_of_one() {
-        let shape = MeshShape::default_sphere();
-
-        assert_eq!(shape, MeshShape::Sphere { radius: 0.5 });
-    }
-
-    #[test]
-    fn mesh_shape_default_cylinder_has_a_diameter_of_one_and_height_two() {
-        let shape = MeshShape::default_cylinder();
-
-        assert_eq!(
-            shape,
-            MeshShape::Cylinder {
-                radius: 0.5,
-                height: 2.0
-            }
-        );
-    }
-
-    #[test]
-    fn mesh_shape_default_plane_is_ten_by_ten() {
-        let shape = MeshShape::default_plane();
-
-        assert_eq!(
-            shape,
-            MeshShape::Plane {
-                size: Vec2::new(10.0, 10.0)
-            }
-        );
-    }
+    const ALL: [(MeshShape, &str); 4] = [
+        (MeshShape::Box {}, "Box"),
+        (MeshShape::Sphere {}, "Sphere"),
+        (MeshShape::Cylinder {}, "Cylinder"),
+        (MeshShape::Plane {}, "Plane"),
+    ];
 
     #[test]
     fn mesh_new_sets_shape() {
-        // ARRANGE — a shape that is not the default, so a constructor that
-        // ignores its argument cannot pass
-        let shape = MeshShape::Sphere { radius: 2.0 };
+        let mesh = Mesh::new(MeshShape::Sphere {});
 
-        // ACT
-        let mesh = Mesh::new(shape);
-
-        // ASSERT
-        assert_eq!(mesh.shape, shape);
+        assert_eq!(mesh.shape, MeshShape::Sphere {});
     }
 
     #[test]
-    fn mesh_default_is_a_unit_cube() {
-        // ARRANGE + ACT
-        let mesh = Mesh::default();
+    fn mesh_default_is_a_box() {
+        assert_eq!(Mesh::default().shape, MeshShape::Box {});
+    }
 
-        // ASSERT — written as a literal, not through default_box(), so this
-        // does not pass by comparing two wrong values
-        assert_eq!(mesh.shape, MeshShape::Box { size: Vec3::ONE });
+    #[test]
+    fn mesh_shape_serializes_as_an_externally_tagged_empty_object() {
+        for (shape, name) in ALL {
+            let json = serde_json::to_value(shape).unwrap();
+
+            assert_eq!(json, serde_json::json!({ name: {} }), "{name}");
+        }
+    }
+
+    #[test]
+    fn mesh_shape_deserializes_from_an_empty_object() {
+        for (shape, name) in ALL {
+            let parsed: MeshShape =
+                serde_json::from_value(serde_json::json!({ name: {} })).unwrap();
+
+            assert_eq!(parsed, shape, "{name}");
+        }
+    }
+
+    #[test]
+    fn mesh_shape_rejects_the_unit_variant_form() {
+        let result = serde_json::from_value::<MeshShape>(serde_json::json!("Box"));
+
+        assert!(result.is_err(), "{result:?}");
+    }
+
+    #[test]
+    fn mesh_shape_rejects_a_pre_20c_parameter_naming_it() {
+        // What an older client or scene sends. Dropping the size silently
+        // would draw the wrong thing; reject it and say why.
+        // (payload, the fields serde may name: it reports whichever unknown
+        // field it meets first, and key order depends on serde_json features).
+        let stale: [(serde_json::Value, &[&str]); 4] = [
+            (
+                serde_json::json!({ "Box": { "size": [0.8, 0.8, 0.8] } }),
+                &["size"],
+            ),
+            (
+                serde_json::json!({ "Sphere": { "radius": 0.5 } }),
+                &["radius"],
+            ),
+            (
+                serde_json::json!({ "Cylinder": { "radius": 0.5, "height": 2.0 } }),
+                &["radius", "height"],
+            ),
+            (
+                serde_json::json!({ "Plane": { "size": [10.0, 10.0] } }),
+                &["size"],
+            ),
+        ];
+        for (json, fields) in stale {
+            let result = serde_json::from_value::<MeshShape>(json.clone());
+
+            match result {
+                Err(e) => assert!(
+                    fields
+                        .iter()
+                        .any(|field| e.to_string().contains(&format!("unknown field `{field}`"))),
+                    "{json}: {e}"
+                ),
+                Ok(shape) => panic!("{json} was accepted as {shape:?}"),
+            }
+        }
     }
 }

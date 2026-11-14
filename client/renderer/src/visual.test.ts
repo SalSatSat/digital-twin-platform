@@ -15,29 +15,10 @@ import {
 } from "./visual";
 
 describe("parseMesh", () => {
-  it.each([
-    [
-      "Box",
-      '{"shape":{"Box":{"size":[1,2,3]}}}',
-      { shape: { Box: { size: [1, 2, 3] } } },
-    ],
-    [
-      "Sphere",
-      '{"shape":{"Sphere":{"radius":0.5}}}',
-      { shape: { Sphere: { radius: 0.5 } } },
-    ],
-    [
-      "Cylinder",
-      '{"shape":{"Cylinder":{"radius":0.5,"height":2}}}',
-      { shape: { Cylinder: { radius: 0.5, height: 2 } } },
-    ],
-    [
-      "Plane",
-      '{"shape":{"Plane":{"size":[10,4]}}}',
-      { shape: { Plane: { size: [10, 4] } } },
-    ],
-  ])("parses a %s", (_variant, json, expected) => {
-    expect(parseMesh(json)).toEqual(expected);
+  it.each(["Box", "Sphere", "Cylinder", "Plane"])("parses a %s", (variant) => {
+    expect(parseMesh(`{"shape":{"${variant}":{}}}`)).toEqual({
+      shape: { [variant]: {} },
+    });
   });
 
   it("returns null when the entity has no Mesh", () => {
@@ -49,14 +30,14 @@ describe("parseMesh", () => {
     ["JSON null", "null"],
     ["an empty object", "{}"],
     ["an empty shape", '{"shape":{}}'],
-    ["an unknown variant", '{"shape":{"Torus":{"radius":1}}}'],
-    [
-      "two variants at once",
-      '{"shape":{"Sphere":{"radius":1},"Box":{"size":[1,1,1]}}}',
-    ],
-    ["a string where a number belongs", '{"shape":{"Sphere":{"radius":"2"}}}'],
-    ["a box size with two components", '{"shape":{"Box":{"size":[1,1]}}}'],
-    ["a non-numeric box component", '{"shape":{"Box":{"size":[1,1,"x"]}}}'],
+    ["an unknown variant", '{"shape":{"Torus":{}}}'],
+    ["two variants at once", '{"shape":{"Sphere":{},"Box":{}}}'],
+    ["a variant named as a string", '{"shape":"Box"}'],
+    ["a variant whose body is not an object", '{"shape":{"Box":1}}'],
+    // What a pre-20c engine would report. The engine rejects it on the way
+    // in (ADR-039); drawing it here would silently ignore the size.
+    ["a pre-20c box with a size", '{"shape":{"Box":{"size":[0.8,0.8,0.8]}}}'],
+    ["a pre-20c sphere with a radius", '{"shape":{"Sphere":{"radius":0.5}}}'],
   ])("returns null instead of throwing for %s", (_label, json) => {
     expect(parseMesh(json)).toBeNull();
   });
@@ -146,9 +127,10 @@ describe("rgbFromInt", () => {
 
 const WHITE: MaterialJson = { base_color: [1, 1, 1] };
 const RED: MaterialJson = { base_color: [1, 0, 0] };
-const box = (x: number): MeshJson => ({ shape: { Box: { size: [x, 1, 1] } } });
-const builtBox = (x: number, baseColor: Rgb): BuiltVisual => ({
-  shape: { Box: { size: [x, 1, 1] } },
+const BOX: MeshJson = { shape: { Box: {} } };
+const SPHERE: MeshJson = { shape: { Sphere: {} } };
+const builtBox = (baseColor: Rgb): BuiltVisual => ({
+  shape: { Box: {} },
   baseColor,
 });
 
@@ -167,45 +149,45 @@ describe("planVisualUpdate", () => {
 
   it("disposes the visual when the Mesh is gone", () => {
     expect(
-      planVisualUpdate(null, RED, WHITE, builtBox(1, [1, 0, 0])),
+      planVisualUpdate(null, RED, WHITE, builtBox([1, 0, 0])),
     ).toStrictEqual({ kind: "dispose" });
   });
 
   it("creates a visual with the fallback colour when there is no Material", () => {
-    expect(planVisualUpdate(box(1), null, WHITE, null)).toStrictEqual({
+    expect(planVisualUpdate(BOX, null, WHITE, null)).toStrictEqual({
       kind: "create",
-      shape: box(1).shape,
+      shape: BOX.shape,
       baseColor: [1, 1, 1],
     });
   });
 
   it("creates a visual with the Material's colour", () => {
-    expect(planVisualUpdate(box(1), RED, WHITE, null)).toStrictEqual({
+    expect(planVisualUpdate(BOX, RED, WHITE, null)).toStrictEqual({
       kind: "create",
-      shape: box(1).shape,
+      shape: BOX.shape,
       baseColor: [1, 0, 0],
     });
   });
 
   it("does nothing when the visual already matches", () => {
     expect(
-      planVisualUpdate(box(1), RED, WHITE, builtBox(1, [1, 0, 0])),
+      planVisualUpdate(BOX, RED, WHITE, builtBox([1, 0, 0])),
     ).toStrictEqual({ kind: "none" });
   });
 
   it("updates only the geometry when only the shape changed", () => {
     expect(
-      planVisualUpdate(box(2), RED, WHITE, builtBox(1, [1, 0, 0])),
-    ).toStrictEqual({ kind: "update", shape: box(2).shape });
+      planVisualUpdate(SPHERE, RED, WHITE, builtBox([1, 0, 0])),
+    ).toStrictEqual({ kind: "update", shape: SPHERE.shape });
   });
 
   it("updates only the colour when only the colour changed", () => {
     expect(
       planVisualUpdate(
-        box(1),
+        BOX,
         { base_color: [0, 1, 0] },
         WHITE,
-        builtBox(1, [1, 0, 0]),
+        builtBox([1, 0, 0]),
       ),
     ).toStrictEqual({ kind: "update", baseColor: [0, 1, 0] });
   });
@@ -213,42 +195,22 @@ describe("planVisualUpdate", () => {
   it("updates both when both changed", () => {
     expect(
       planVisualUpdate(
-        box(3),
+        SPHERE,
         { base_color: [0, 1, 0] },
         WHITE,
-        builtBox(1, [1, 0, 0]),
+        builtBox([1, 0, 0]),
       ),
     ).toStrictEqual({
       kind: "update",
-      shape: box(3).shape,
+      shape: SPHERE.shape,
       baseColor: [0, 1, 0],
     });
   });
 
   it("returns to the fallback colour when the Material is removed", () => {
     expect(
-      planVisualUpdate(box(1), null, WHITE, builtBox(1, [1, 0, 0])),
+      planVisualUpdate(BOX, null, WHITE, builtBox([1, 0, 0])),
     ).toStrictEqual({ kind: "update", baseColor: [1, 1, 1] });
-  });
-
-  it("updates the geometry when the variant changes", () => {
-    const sphere: MeshJson = { shape: { Sphere: { radius: 0.5 } } };
-    expect(
-      planVisualUpdate(sphere, RED, WHITE, builtBox(1, [1, 0, 0])),
-    ).toStrictEqual({ kind: "update", shape: sphere.shape });
-  });
-
-  it("treats shapes as equal whatever the property order", () => {
-    const mesh: MeshJson = {
-      shape: { Cylinder: { height: 2, radius: 0.5 } },
-    };
-    const built: BuiltVisual = {
-      shape: { Cylinder: { radius: 0.5, height: 2 } },
-      baseColor: [1, 0, 0],
-    };
-    expect(planVisualUpdate(mesh, RED, WHITE, built)).toStrictEqual({
-      kind: "none",
-    });
   });
 });
 

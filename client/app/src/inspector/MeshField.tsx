@@ -2,12 +2,9 @@ import { useMemo } from "react";
 import {
   componentVariants,
   meshVariantName,
-  shapeFields,
-  withShapeField,
   type MeshJson,
 } from "@dt-platform/renderer";
 import { useComponentField } from "./useComponentField";
-import { NumberField } from "./NumberField";
 import type { FieldRendererProps } from "./FieldRenderer";
 
 export function MeshField({ engine, handle }: FieldRendererProps) {
@@ -21,8 +18,9 @@ export function MeshField({ engine, handle }: FieldRendererProps) {
   const variants = useMemo(() => componentVariants(engine, "Mesh"), [engine]);
   if (!value) return null;
 
+  // Primitives have no parameters (ADR-039): the entity's Scale sizes them,
+  // so the shape is the only thing to edit here.
   const variant = meshVariantName(value.shape);
-  const fields = shapeFields(value.shape);
   // A shape this build does not list (a newer engine) still shows as the
   // current choice instead of the select snapping to its first option.
   const names = variants.map((v) => v.name);
@@ -53,31 +51,6 @@ export function MeshField({ engine, handle }: FieldRendererProps) {
           ))}
         </select>
       </div>
-      {fields.length === 0 ? (
-        <p className="text-text-muted text-xs mt-1">
-          No editor for the {variant} shape yet.
-        </p>
-      ) : (
-        fields.map((field) => (
-          <div
-            key={field.key}
-            className="flex items-center justify-between mt-1"
-          >
-            <span className="text-sm text-text-primary w-20 shrink-0">
-              {field.label}
-            </span>
-            <NumberField
-              value={field.value}
-              onChange={(next) =>
-                setValue({
-                  shape: withShapeField(value.shape, field.key, next),
-                })
-              }
-              className="w-24 bg-surface-raised border border-border rounded px-1 py-0.5 text-text-primary focus:ring-1 focus:ring-accent focus:outline-none"
-            />
-          </div>
-        ))
-      )}
       {error && <p className="text-text-error text-xs mt-1">{error}</p>}
     </div>
   );
