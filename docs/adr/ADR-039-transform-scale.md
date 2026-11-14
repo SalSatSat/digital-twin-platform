@@ -233,3 +233,88 @@ Rejected alternatives:
 - `get_position`, `get_rotation` and `set_world_transform` keep their
   signatures. Respawn, the camera sync and the translate and rotate gizmo need
   no change beyond the new status code.
+
+## Addendum: Implementation Notes (2026-11-14)
+Phase 20c shipped with decisions 5 and 6 as amended before implementation, in
+this order: the core transform, the WASM transform API, the renderer's matrix
+sync and scene scale, parameter-free primitives, the scale gizmo, then the
+Inspector. The renderer step moved ahead of the primitives so that every
+commit ran with the demo cubes unchanged: the cubes switched from a Box size
+of 0.8 to a scale of 0.8 in the same change that removed the size. What the
+implementation added or changed:
+
+- **Decisions 1 to 3: as decided.** `WorldTransform` wraps an `Affine3A` and
+  exposes `position()`, `rotation()`, `lossy_scale()`, `affine()` and
+  `local_for()`; `relative_to` and the unused `WorldTransform::new` are gone.
+  glam puts a mirror on X: a scale of `(1, -1, 1)` decomposes as
+  `(-1, 1, 1)` and a half turn about Z, which a test pins. `rotation()` is
+  normalised, because under shear the decomposed quaternion is not unit
+  length (0.985 in the test case).
+- **Decisions 5 and 6: as amended.** `local_for` solves the rotation from
+  `P⁻¹ · R · S_world · S_local⁻¹`. A no-op world write is exact under a
+  mirrored or negatively scaled parent, and so is a keep-world reparent; the
+  first draft's formula turned such a child by 180 degrees, and a test of
+  each case fails against it. Both keep-world reparents compute the new local
+  before touching the hierarchy, so a `DegenerateTransform` changes nothing.
+  The new variant is status 3 in `set_world_transform`, `set_parent` and
+  `remove_parent`, and `Engine` maps each to its own message.
+- **Decision 2: validation, widened.** `-0` is rejected as zero. JSON such as
+  `1e39` reaches the engine as infinity once narrowed to f32, so the finite
+  checks are explicit. `LocalTransformView` now also checks `position` and
+  `rotation_euler_deg` for finite values, which it did not before 20c: a
+  non-finite position made the world matrix of the entity and its
+  descendants non-finite. Messages name the field: `position.x`,
+  `rotation_euler_deg.y`, `scale.z`. All three checks run before anything is
+  written.
+- **Decision 2: the Inspector does not snap back.** A rejected value is not
+  replaced by the engine's value. `useComponentField` keeps the edit pending,
+  so the typed value stays next to the error until a later write succeeds.
+  That is the hook's documented behaviour and was already how Mesh dimensions
+  behaved in 20b; this ADR's description of it was wrong. One consequence
+  predates this phase: while a rejected edit is pending, external changes
+  (for example a gizmo drag) are not shown in that field, and the next edit
+  sends the pending value again. Logged as debt.
+- **Decision 4: the matrix path.** Each visual has
+  `matrixAutoUpdate = false`, takes the engine's matrix with `fromArray`, and
+  sets `matrixWorldNeedsUpdate`. `moveTo` replaces only the translation, so a
+  respawned entity keeps its rotation, scale and shear. A `Scene` that
+  recomposes its own matrix forces every child's world matrix to refresh,
+  which hides a missing flag, so the tests guarding both flags use a scene
+  that holds still. Renderer tests assert `matrixWorld`, what Three draws and
+  raycasts from, not how the manager got there.
+- **Decision 7: as decided.** `set_local_scale` also returns 1 for an entity
+  without a `LocalTransform`. `Engine.setLocalScale` throws `HierarchyError`
+  for status 1 and `Error` for status 2, as `setWorldTransform` does.
+- **Decision 9: the primary is passed explicitly,** from `App` through
+  `EngineView`'s `gizmoPrimary`, `Renderer.setGizmoTargets(handles, primary)`
+  and `TransformGizmo.update`. Every operation in `selection.ts` happens to
+  leave the primary last, but nothing relies on that. Refinement: the scale
+  handles follow the primary when it is a target, and otherwise the first
+  target, because a primary moved by a selected ancestor would show axes the
+  drag does not scale. The pure rules live in `gizmo/scale-drag.ts`. A
+  frame's write is skipped when an axis is zero or not finite as the f32 the
+  engine receives (a Float32Array), so `1e-20 × 1e-30` is skipped although
+  it is not zero as a double. The proxy's scale is reset to 1 every frame
+  outside a drag, so during a drag it is the drag's factor. On a mirrored
+  entity a handle can sit on the far side of its axis, because the
+  decomposed rotation includes glam's half turn; the drag still scales the
+  right axis.
+- **Decision 10: strict primitives.** `MeshShape` denies unknown fields, the
+  first use of `deny_unknown_fields` in the engine, so a pre-20c
+  `{"Box":{"size":[..]}}` is rejected naming `size` instead of being drawn at
+  the wrong size. The client's `parseShape` refuses a non-empty body for the
+  same reason. The `MeshShape::default_*` constructors were removed.
+  `meshVariantName` stays for the Inspector's shape picker; `shapeFields`,
+  `withShapeField` and `ShapeField` were removed.
+- **Decision 11: as decided.** A definition's scale is written only when it
+  is given. The demo cubes share `CUBE_SCALE`.
+- **Decision 12: as decided.** The three Transform rows share one local
+  `AxisRow` component.
+
+Verified: 116 core and 130 WASM Rust tests, 291 vitest tests in 11 files,
+clippy, eslint, `tsc --build` and `go vet` clean. In the browser, on WebGPU,
+every check listed under Consequences passed, along with the translate and
+rotate gizmos and respawn. Not yet checked: the mirrored box on WebGL. The
+renderer picks WebGPU whenever the browser offers it, and there is no way to
+force WebGL yet; the Phase 20d spike adds a temporary `?backend=webgl`
+override, and this check runs there.
