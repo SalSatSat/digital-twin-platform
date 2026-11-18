@@ -1,7 +1,9 @@
 # ADR-031: Dual Shader Material Implementations (GLSL/WebGL + TSL/WebGPU)
 
 ## Status
-Accepted
+Superseded by ADR-041: custom materials are written once, in TSL, for
+`WebGPURenderer` on both of its backends. Phase 20d removes the GLSL grid
+material.
 
 ## Date
 2026-09-12

@@ -1,7 +1,9 @@
 # ADR-016: WebGPU and WebGL Backend Abstraction
 
 ## Status
-Accepted
+Accepted. Amended by ADR-041: the viewport has one renderer, `WebGPURenderer`,
+which falls back to its own WebGL 2 backend. Phase 20d removes the classic
+`WebGLBackend`, and `RenderBackend` keeps a single implementation.
 
 ## Date
 2026-06-27

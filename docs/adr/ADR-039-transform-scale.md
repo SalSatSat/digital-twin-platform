@@ -318,3 +318,12 @@ rotate gizmos and respawn. Not yet checked: the mirrored box on WebGL. The
 renderer picks WebGPU whenever the browser offers it, and there is no way to
 force WebGL yet; the Phase 20d spike adds a temporary `?backend=webgl`
 override, and this check runs there.
+
+## Addendum: The Mirrored Box on WebGL (2026-11-18)
+The check left open above ran in the Phase 20d spike. A box with its X scale
+negated was rendered alone and compared with the same box unmirrored. On both
+WebGL paths, the classic `WebGLRenderer` and `WebGPURenderer`'s WebGL 2
+backend, the two images were identical on three r177 and r187. Native WebGPU
+drew the mirrored box inside-out on r177, because its pipelines fixed the front
+face to counter-clockwise. Bumping three to r187 (commit 680bac3) fixed it, and
+the images now match on all three. ADR-041 has the detail.
