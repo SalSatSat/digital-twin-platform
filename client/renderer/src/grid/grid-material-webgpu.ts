@@ -1,4 +1,5 @@
 import { MeshBasicNodeMaterial, DoubleSide } from "three/webgpu";
+import type { Node } from "three/webgpu";
 import {
   Fn,
   vec2,
@@ -18,22 +19,29 @@ import {
 } from "three/tsl";
 import { GRID_CONFIG } from "./grid-config";
 
+// Typed parameters, not `any`: with untyped inputs @types/three resolves
+// fwidth() to a vec3 overload, and the wrong type spreads through the graph.
+type Vec2Node = Node<"vec2">;
+type FloatNode = Node<"float">;
+
 /**
  * TSL equivalent of grid-material-webgl.ts's gridLine() — same
  * fwidth-based antialiased repeating-line technique, expressed as
  * composable nodes instead of raw GLSL. Keep the two in sync if the
  * algorithm changes.
  */
-const gridLine = Fn(([coord, spacing, lineWidth]: [any, any, any]) => {
-  const scaled = coord.div(spacing);
-  const deriv = max(fwidth(scaled).mul(lineWidth), vec2(1e-6, 1e-6));
-  const grid = abs(fract(scaled.sub(0.5)).sub(0.5)).div(deriv);
-  const line = min(grid.x, grid.y);
-  return float(1.0).sub(clamp(line, 0.0, 1.0));
-});
+const gridLine = Fn(
+  ([coord, spacing, lineWidth]: [Vec2Node, FloatNode, FloatNode]) => {
+    const scaled = coord.div(spacing);
+    const deriv = max(fwidth(scaled).mul(lineWidth), vec2(1e-6, 1e-6));
+    const grid = abs(fract(scaled.sub(0.5)).sub(0.5)).div(deriv);
+    const line = min(grid.x, grid.y);
+    return float(1.0).sub(clamp(line, 0.0, 1.0));
+  },
+);
 
 /** TSL equivalent of grid-material-webgl.ts's axisLine(). */
-const axisLine = Fn(([coord, lineWidth]: [any, any]) => {
+const axisLine = Fn(([coord, lineWidth]: [FloatNode, FloatNode]) => {
   const deriv = max(fwidth(coord).mul(lineWidth), float(1e-6));
   return float(1.0).sub(clamp(abs(coord).div(deriv), 0.0, 1.0));
 });

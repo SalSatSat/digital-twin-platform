@@ -98,7 +98,9 @@ export class Renderer {
 
     this.sceneManager = new SceneManager(engine, this.threeScene, canvas);
 
-    const hasWebGPU = !!navigator.gpu;
+    // `in`, not navigator.gpu: @types/three 0.187 no longer pulls in
+    // @webgpu/types, which is what declared navigator.gpu.
+    const hasWebGPU = "gpu" in navigator;
     this.backend = hasWebGPU
       ? new WebGPUBackend(canvas)
       : new WebGLBackend(canvas);

@@ -11,12 +11,12 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/three": "0.177.0",
+    "@types/three": "0.187.0",
     "typescript": "^5.8.3",
     "vitest": "^5.0.3"
   },
   "dependencies": {
     "dt-engine-wasm": "file:../../engine/wasm/pkg",
-    "three": "^0.177.0"
+    "three": "^0.187.0"
   }
 }
